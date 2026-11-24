@@ -1,7 +1,10 @@
 -- What this system is: Saule's version, the kernel, memory, the screen —
--- like the Mac's About.
+-- like the Mac's About. Asked about again every second while the pane is
+-- open, so what changes (the memory in use, the open windows) is shown as
+-- it is now.
 
 from uikit import *
+from "wmapi" import SystemInfo
 from model import SystemSettings
 from theme import Style
 from views import Group, PaneTitle, Row
@@ -14,21 +17,71 @@ export class AboutPane extends View
     self.settings = settings
   end
 
-  fn body(context: BuildContext) -> View
-    local info = self.settings.info
+  -- How often the system is asked about again, in seconds.
+  static every: float = 1.0
 
-    local memory = "—"
-    if info.memory > 0 then
-      memory = String.format("%.1f GB", (info.memory as float) / 1048576.0)
+  -- It has a tick to run: see `View.ticks`.
+  fn ticks() -> boolean
+    return true
+  end
+
+  -- Ask again every `every` seconds, and build the pane again when what
+  -- it says changed: the memory in use, the open windows, the time up.
+  fn tick(el: Element, dt: float) -> nil
+    local bag: table = el.data.scratch
+    local waited = ((bag.waited as float?) ?? 0.0) + dt
+    if waited < AboutPane.every then
+      bag.waited = waited
+      return
     end
-    local display = "—"
+    bag.waited = 0.0
+
+    local before = AboutPane.said(self.settings.info)
+    self.settings.refreshInfo()
+    if AboutPane.said(self.settings.info) != before then
+      el.markNeedsBuild()
+    end
+  end
+
+  -- Everything the pane says of `info`, to tell when it changed.
+  static fn said(info: SystemInfo) -> string
+    local values: table<string> = {info.saule}
+    for fact in AboutPane.facts(info) do
+      Table.insert(values, fact[2])
+    end
+    return String.join("\n", values)
+  end
+
+  -- The facts shown, in order: each a name and its value.
+  static fn facts(info: SystemInfo) -> table<table<string>>
+    local display = ""
     if info.screenWidth > 0 then
       display = info.screenWidth .. " × " .. info.screenHeight
     end
+    return {
+      {"Computer", info.machine},
+      {"Graphics", info.graphics},
+      {"Window manager", info.wm},
+      {"Kernel", info.kernel},
+      {"Memory", AboutPane.memory(info)},
+      {"Storage", info.storage},
+      {"Display", display},
+      {"Open windows", tostring(info.windows)},
+      {"Up for", AboutPane.duration(info.uptime)},
+    }
+  end
+
+  fn body(context: BuildContext) -> View
+    local info = self.settings.info
 
     local name = Text("Saule Linux").font(18.0).foregroundStyle(Style.text)
     local version = "Saule " .. info.saule
     local said = Text(version).font(12.0).foregroundStyle(Style.dimText)
+
+    local rows: table<View> = {}
+    for fact in AboutPane.facts(info) do
+      Table.insert(rows, AboutPane.fact(fact[1], fact[2]))
+    end
 
     return VStack(alignment: StackAlignment.Fill, spacing: 18.0) do
       PaneTitle("About")
@@ -36,21 +89,27 @@ export class AboutPane extends View
         show(name)
         show(said)
       end
-      Group(
-        "This system",
-        {
-          AboutPane.fact("Computer", info.machine),
-          AboutPane.fact("Graphics", info.graphics),
-          AboutPane.fact("Window manager", info.wm),
-          AboutPane.fact("Kernel", info.kernel),
-          AboutPane.fact("Memory", memory),
-          AboutPane.fact("Display", display),
-          AboutPane.fact("Open windows", tostring(info.windows)),
-          AboutPane.fact("Up for", AboutPane.duration(info.uptime)),
-        }
-      )
+      Group("This system", rows)
       Spacer()
     end
+  end
+
+  -- Memory, in kB: what is in use now, of all there is: "0.4 GB used of
+  -- 1.0 GB". Only all there is when what is in use isn't known.
+  static fn memory(info: SystemInfo) -> string
+    if info.memory <= 0 then
+      return ""
+    end
+    local all = String.format("%.1f GB", (info.memory as float) / 1048576.0)
+    if info.memoryUsed <= 0 then
+      return all
+    end
+    local mb = (info.memoryUsed as float) / 1024.0
+    local used = String.format("%.0f MB", mb)
+    if mb >= 1000.0 then
+      used = String.format("%.1f GB", mb / 1024.0)
+    end
+    return used .. " used of " .. all
   end
 
   -- A row that only tells: the value in place of a control. A value that
