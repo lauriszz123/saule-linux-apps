@@ -1,0 +1,70 @@
+-- A shortcut that can be changed: its keys, as key caps, on a small
+-- rounded field. Clicked, it waits for the new keys instead, ringed in the
+-- accent, until they are typed (see `KeyboardPane`); keys that could not
+-- be used are said so in it, as `problem`.
+
+from uikit import *
+from theme import Style
+
+export class ShortcutField extends View
+  keys: table<string>
+
+  -- Waiting for the new keys.
+  recording: boolean
+
+  -- Changed from what it is by default.
+  changed: boolean
+
+  -- Why the keys just typed can't be the shortcut, or "".
+  problem: string
+
+  onPress: fn() -> nil
+
+  fn init(
+    keys: table<string>,
+    recording: boolean,
+    changed: boolean,
+    onPress: fn() -> nil,
+    problem: string = "",
+    key: string? = nil
+  )
+    self.super(key)
+    self.keys = keys
+    self.recording = recording
+    self.changed = changed
+    self.problem = problem
+    self.onPress = onPress
+  end
+
+  fn body(context: BuildContext) -> View
+    local theme = Theme.of(context)
+    local inside: View = Shortcut(self.keys, color: Style.text, size: 11.0)
+    local ring: Color? = nil
+    if self.recording then
+      local hint = "Type the new shortcut"
+      local colour = Style.dimText
+      if self.problem != "" then
+        hint = self.problem
+        colour = Style.warning
+      end
+      inside = Text(hint).font(12.0).foregroundStyle(colour)
+      ring = theme.primary
+    elseif #self.keys == 0 then
+      inside = Text("None").font(12.0).foregroundStyle(Style.dimText)
+    end
+
+    local fill = Style.track
+    if self.changed and not self.recording then
+      fill = theme.primary.withAlpha(0.18)
+    end
+    -- Key caps and words are not one height: each is centred on the
+    -- field's.
+    local centre = StackAlignment.Center
+    local fit = StackSize.Fit
+    local line = HStack(alignment: centre, sizing: fit, children: {inside})
+    local inset = EdgeInsets.symmetric(horizontal: 8.0)
+    local field = line.padding(insets: inset).frame(height: 26.0)
+    local shown = field.background(fill, radius: 6.0, border: ring)
+    return GestureArea(child: shown, onTap: self.onPress)
+  end
+end

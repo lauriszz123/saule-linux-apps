@@ -20,6 +20,8 @@ export class Sidebar extends View
     Pane.Windows,
     Pane.Appearance,
     Pane.Wallpaper,
+    Pane.Keyboard,
+    Pane.Mouse,
     Pane.About,
   }
 

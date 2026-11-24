@@ -11,7 +11,9 @@ from "wmapi" import Presets
 from model import Pane, SystemSettings
 from theme import Style
 from views import Sidebar
-from panes import AboutPane, AppearancePane, OfflinePane, WallpaperPane
+from panes import AboutPane, AppearancePane, KeyboardPane, MousePane
+from panes import OfflinePane
+from panes import WallpaperPane
 from panes import WindowsPane
 
 export class SettingsWindow extends View
@@ -36,6 +38,8 @@ export class SettingsWindow extends View
       refresh()
     end
     local openPane = fn(pane: Pane)
+      -- A shortcut half recorded is dropped with its pane.
+      settings.recordKeys(false)
       for i = 1, #Sidebar.order do
         if Sidebar.order[i] == pane then
           opened.set(i)
@@ -74,6 +78,10 @@ export class SettingsWindow extends View
         pane = AppearancePane(settings, changed)
       case Pane.Wallpaper then
         pane = WallpaperPane(settings, changed)
+      case Pane.Keyboard then
+        pane = KeyboardPane(settings, changed)
+      case Pane.Mouse then
+        pane = MousePane(settings, changed)
       case Pane.About then nil
     end
     return pane

@@ -1,0 +1,251 @@
+-- The window manager's keyboard shortcuts: the key they are all held with,
+-- and each one, which can be changed by clicking it and typing the new
+-- keys — as a Mac's Keyboard Shortcuts are.
+--
+-- While a shortcut is recorded, every key comes to Settings, the window
+-- manager's own too (`SystemSettings.recordKeys`), so the keys of one in
+-- use can be typed. Escape stops without a change; Backspace puts the
+-- shortcut back as it was by default.
+
+from uikit import *
+from "wmapi" import KeyAction, KeyActions
+from model import SystemSettings
+from theme import Style
+from views import Group, PaneTitle, Row, Segmented, ShortcutField
+
+export class KeyboardPane extends View
+  settings: SystemSettings
+  changed: fn() -> nil
+
+  fn init(settings: SystemSettings, changed: fn() -> nil, key: string? = nil)
+    self.super(key)
+    self.settings = settings
+    self.changed = changed
+  end
+
+  fn body(context: BuildContext) -> View
+    local settings = self.settings
+    local options = settings.options
+    local changed = self.changed
+    -- The action being recorded, or ""; and what to say about the last
+    -- keys typed, or "".
+    local recording = context.state("recording", "")
+    local note = context.state("note", "")
+
+    local stop = fn()
+      settings.recordKeys(false)
+      recording.set("")
+    end
+    local start = fn(name: string)
+      settings.recordKeys(true)
+      recording.set(name)
+      note.set("")
+    end
+    -- `name`'s shortcut is `written` from now on, or as it is by default
+    -- when that is "".
+    local use = fn(name: string, written: string)
+      local next: table<string, string> = {}
+      for action, keys in options.shortcuts do
+        if action != name then
+          next[action] = keys
+        end
+      end
+      if written != "" then
+        next[name] = written
+      end
+      options.shortcuts = next
+      stop()
+      changed()
+    end
+
+    local typed = fn(e: KeyEvent) -> boolean
+      local name = recording.text("")
+      if name == "" then
+        return false
+      end
+      return KeyboardPane.typed(settings, name, e, use, stop, note)
+    end
+
+    local mod = Segmented(
+      {"", "super", "alt", "ctrl+alt"},
+      {"Automatic", "Super", "Alt", "Ctrl+Alt"},
+      options.modKey,
+      fn(choice: string)
+        options.modKey = choice
+        stop()
+        changed()
+      end
+    )
+    local now = KeyActions.split(settings.keys.mod ?? "")
+    local modRows: table<View> = {
+      Row("Hold for every shortcut", mod),
+      Row("Now", Shortcut(now, color: Style.text, size: 11.0)),
+    }
+
+    local rows = fn(actions: table<KeyAction>) -> table<View>
+      local out: table<View> = {}
+      for action in actions do
+        local name = action.name
+        local press = fn()
+          if recording.text("") == name then
+            stop()
+          else
+            start(name)
+          end
+        end
+        local field = ShortcutField(
+          settings.shortcut(name),
+          recording.text("") == name,
+          options.shortcuts[name] != nil,
+          press,
+          problem: note.text("")
+        )
+        Table.insert(out, Row(action.title, field))
+      end
+      return out
+    end
+
+    local restore = fn()
+      options.modKey = ""
+      options.shortcuts = {}
+      note.set("")
+      stop()
+      changed()
+    end
+
+    local groups: table<View> = {
+      PaneTitle("Keyboard"),
+      Group("Shortcut key", modRows),
+      Group("System", rows(KeyActions.system)),
+      Group("Windows", rows(KeyActions.windows)),
+      Group("Moving around", KeyboardPane.fixedRows(now)),
+      KeyboardPane.footer(restore),
+    }
+    local fill = StackAlignment.Fill
+    local column = VStack(alignment: fill, spacing: 18.0, children: groups)
+    local inset = EdgeInsets.only(right: 8.0)
+    local scroll = ScrollView(child: column.padding(insets: inset))
+    return KeyboardListener(onKeyDown: typed, child: scroll)
+  end
+
+  -- A key typed while `name` is recorded: the new shortcut, Escape to
+  -- stop, Backspace for the default. Keys that can't be a shortcut, or
+  -- that another already is, are said so in `note`, and recording goes on.
+  static fn typed(
+    settings: SystemSettings,
+    name: string,
+    e: KeyEvent,
+    use: fn(string, string) -> nil,
+    stop: fn() -> nil,
+    note: Binding
+  ) -> boolean
+    -- The modifiers alone are on their way to a shortcut.
+    if KeyboardPane.isModifierKey(e.key) then
+      return true
+    end
+    local plain = not (e.ctrl or e.alt or e.shift or e.meta)
+    if plain and e.key == "escape" then
+      stop()
+      return true
+    end
+    if plain and (e.key == "backspace" or e.key == "delete") then
+      use(name, "")
+      note.set("")
+      return true
+    end
+
+    local keys = KeyboardPane.keysOf(e)
+    if not KeyActions.valid(keys) then
+      note.set("Hold Ctrl, Alt or Super with it")
+      return true
+    end
+    -- The keys it has already: nothing to change.
+    if KeyActions.same(keys, settings.shortcut(name)) then
+      note.set("")
+      stop()
+      return true
+    end
+    local owner = KeyboardPane.owner(settings, keys)
+    if owner != "" and owner != name then
+      note.set("Already: " .. KeyActions.title(owner))
+      return true
+    end
+    note.set("")
+    use(name, KeyActions.join(keys))
+    return true
+  end
+
+  -- The keys of `e`: its modifiers, in the order shortcuts list them, then
+  -- the key.
+  static fn keysOf(e: KeyEvent) -> table<string>
+    local keys: table<string> = {}
+    if e.ctrl then
+      Table.insert(keys, "ctrl")
+    end
+    if e.alt then
+      Table.insert(keys, "alt")
+    end
+    if e.shift then
+      Table.insert(keys, "shift")
+    end
+    if e.meta then
+      Table.insert(keys, "super")
+    end
+    Table.insert(keys, e.key)
+    return keys
+  end
+
+  -- Which action `keys` already are, or "".
+  static fn owner(settings: SystemSettings, keys: table<string>) -> string
+    for action in KeyActions.all() do
+      if KeyActions.same(settings.shortcut(action.name), keys) then
+        return action.name
+      end
+    end
+    return ""
+  end
+
+  -- The engine's names for the modifier keys themselves.
+  static fn isModifierKey(key: string) -> boolean
+    for name in {"lctrl", "rctrl", "lalt", "ralt", "lshift", "rshift"} do
+      if key == name then
+        return true
+      end
+    end
+    return key == "lgui" or key == "rgui"
+  end
+
+  -- The keys that are Mod and an arrow or a number, whatever Mod is: shown,
+  -- not changed.
+  static fn fixedRows(mod: table<string>) -> table<View>
+    local with = fn(keys: table<string>) -> View
+      local all: table<string> = {}
+      for key in mod do
+        Table.insert(all, key)
+      end
+      for key in keys do
+        Table.insert(all, key)
+      end
+      return Shortcut(all, color: Style.dimText, size: 11.0)
+    end
+    local rows: table<View> = {
+      Row("Move to the window that way", with({"arrows"})),
+      Row("Swap with the window that way", with({"shift", "arrows"})),
+      Row("Show a workspace", with({"1–4"})),
+      Row("Send the window to a workspace", with({"shift", "1–4"})),
+    }
+    return rows
+  end
+
+  -- Under the groups: how to change a shortcut, and the way back to the
+  -- defaults.
+  static fn footer(restore: fn() -> nil) -> View
+    local how = "Click a shortcut, then type the new keys."
+    local help = how .. " Escape stops; Backspace puts it back."
+    local text = Text(help).font(12.0).foregroundStyle(Style.dimText)
+    return HStack(alignment: StackAlignment.Center, spacing: 12.0) do
+      text.expanded()
+      Button(label: "Restore Defaults", onPressed: restore)
+    end
+  end
+end

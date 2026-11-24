@@ -17,6 +17,9 @@ export class Style
   static text: Color = Color(0.95, 0.95, 0.97)
   static dimText: Color = Color(1.0, 1.0, 1.0, 0.55)
 
+  -- What can't be done, said where it was tried.
+  static warning: Color = Color(1.0, 0.72, 0.42)
+
   -- A segmented control's track, and its chosen segment.
   static track: Color = Color(1.0, 1.0, 1.0, 0.08)
   static segment: Color = Color(1.0, 1.0, 1.0, 0.22)

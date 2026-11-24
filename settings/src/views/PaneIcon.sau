@@ -28,6 +28,8 @@ export class PaneIcon extends View
       case Pane.Windows then PaneIcon.windows(x, y, s)
       case Pane.Appearance then PaneIcon.appearance(x, y, s)
       case Pane.Wallpaper then PaneIcon.wallpaper(x, y, s)
+      case Pane.Keyboard then PaneIcon.keyboard(x, y, s)
+      case Pane.Mouse then PaneIcon.mouse(x, y, s)
       case Pane.About then PaneIcon.about(x, y, s)
     end
   end
@@ -37,6 +39,8 @@ export class PaneIcon extends View
       case Pane.Windows then Color(0.25, 0.52, 0.96)
       case Pane.Appearance then Color(0.33, 0.34, 0.38)
       case Pane.Wallpaper then Color(0.16, 0.66, 0.84)
+      case Pane.Keyboard then Color(0.42, 0.40, 0.78)
+      case Pane.Mouse then Color(0.20, 0.62, 0.52)
       case Pane.About then Color(0.52, 0.53, 0.58)
     end
   end
@@ -92,6 +96,53 @@ export class PaneIcon extends View
         x + s * 0.82,
         y + s * 0.74,
       }
+    )
+  end
+
+  -- A keyboard: a white board with two rows of keys and a space bar cut
+  -- out of it in the icon's colour.
+  static fn keyboard(x: float, y: float, s: float) -> nil
+    local left = x + s * 0.16
+    local top = y + s * 0.3
+    local w = s * 0.68
+    Graphics.rectangle("fill", left, top, w, s * 0.4, s * 0.07)
+
+    PaneIcon.colour(Pane.Keyboard).apply()
+    local key = s * 0.09
+    local step = s * 0.135
+    for row = 0, 1 do
+      for column = 0, 3 do
+        local kx = left + s * 0.08 + (column as float) * step
+        local ky = top + s * 0.06 + (row as float) * s * 0.11
+        Graphics.rectangle("fill", kx, ky, key, key * 0.8, key * 0.2)
+      end
+    end
+    local bar = top + s * 0.28
+    Graphics.rectangle("fill", left + s * 0.17, bar, s * 0.34, key * 0.7, 1.0)
+  end
+
+  -- A mouse: a white rounded body, its buttons split by a line and the
+  -- wheel between them, in the icon's colour.
+  static fn mouse(x: float, y: float, s: float) -> nil
+    local w = s * 0.36
+    local h = s * 0.56
+    local left = x + (s - w) / 2.0
+    local top = y + (s - h) / 2.0
+    Graphics.rectangle("fill", left, top, w, h, w / 2.0)
+
+    PaneIcon.colour(Pane.Mouse).apply()
+    local cx = x + s / 2.0
+    local line = Math.max(s * 0.04, 1.0)
+    Graphics.rectangle("fill", left, top + h * 0.42, w, line)
+    Graphics.rectangle("fill", cx - line / 2.0, top, line, h * 0.42)
+    local wheel = s * 0.06
+    Graphics.rectangle(
+      "fill",
+      cx - wheel / 2.0,
+      top + h * 0.12,
+      wheel,
+      h * 0.18,
+      wheel / 2.0
     )
   end
 

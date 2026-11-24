@@ -5,11 +5,22 @@
 -- reached — Settings run on its own, or the window manager gone — this
 -- says why, and changing anything does nothing until `connect` succeeds.
 
-from "wmapi" import SystemInfo, WmOptions, WmService, WmSettings
+from "wmapi" import KeyActions, SystemInfo, WmOptions, WmService
+from "wmapi" import WmSettings
+from log import Logger
 
 export class SystemSettings
+  static local log: Logger = Logger("settings")
+
   options: WmOptions
   info: SystemInfo
+
+  -- Every shortcut as the window manager has it now, by action, and
+  -- "mod" (see `WmSettings.keys`).
+  keys: table<string, string>
+
+  -- Every key comes to Settings, while a shortcut is recorded.
+  recording: boolean
 
   -- Why there is no connection, or "" when there is one.
   problem: string
@@ -19,6 +30,8 @@ export class SystemSettings
   fn init()
     self.options = WmOptions()
     self.info = SystemInfo()
+    self.keys = {}
+    self.recording = false
     self.problem = ""
     self.wm = nil
     self.connect()
@@ -34,8 +47,10 @@ export class SystemSettings
       local wm = WmSettings.connect(WmService.name)
       self.options = wm.options()
       self.info = wm.about()
+      self.keys = wm.keys()
       self.wm = wm
       self.problem = ""
+      SystemSettings.log.debug("connected", {service: WmService.name})
     catch e: string
       self.lose(e)
     end
@@ -51,6 +66,29 @@ export class SystemSettings
     try
       wm!.apply(self.options)
       self.options = wm!.options()
+      self.keys = wm!.keys()
+      SystemSettings.log.debug("applied")
+    catch e: string
+      self.lose(e)
+    end
+  end
+
+  -- The keys of the action `name` (see `KeyActions`) as they are now:
+  -- {"ctrl", "alt", "d"}.
+  fn shortcut(name: string) -> table<string>
+    return KeyActions.split(self.keys[name] ?? "")
+  end
+
+  -- Let every key through to Settings while a shortcut is recorded, the
+  -- window manager's own too; or stop.
+  fn recordKeys(on: boolean) -> nil
+    local wm = self.wm
+    if wm == nil or on == self.recording then
+      return
+    end
+    self.recording = on
+    try
+      wm!.recordKeys(on)
     catch e: string
       self.lose(e)
     end
@@ -70,7 +108,9 @@ export class SystemSettings
   end
 
   local fn lose(problem: string) -> nil
+    SystemSettings.log.warn("window manager unreachable", {reason: problem})
     self.wm = nil
+    self.recording = false
     self.problem = problem
   end
 end

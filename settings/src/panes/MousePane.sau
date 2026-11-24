@@ -1,0 +1,123 @@
+-- How the mouse feels: how fast the pointer and the wheel go, which way
+-- the wheel scrolls, which button clicks, and whether a window gets the
+-- keyboard as the pointer moves onto it.
+--
+-- The window manager applies them to everything on the screen, apps too.
+-- Nested in another system's desktop, that desktop moves the pointer, so
+-- its speed is set there; the rest still apply.
+
+from uikit import *
+from model import SystemSettings
+from theme import Style
+from views import Group, PaneTitle, Row, Segmented, SliderControl
+
+export class MousePane extends View
+  settings: SystemSettings
+  changed: fn() -> nil
+
+  fn init(settings: SystemSettings, changed: fn() -> nil, key: string? = nil)
+    self.super(key)
+    self.settings = settings
+    self.changed = changed
+  end
+
+  fn body(context: BuildContext) -> View
+    local settings = self.settings
+    local options = settings.options
+    local changed = self.changed
+
+    local speed = SliderControl(
+      options.pointerSpeed,
+      0.25,
+      3.0,
+      0.25,
+      "×",
+      fn(v: float)
+        options.pointerSpeed = v
+        changed()
+      end,
+      format: "%.2f"
+    )
+    local primary = Segmented(
+      {"left", "right"},
+      {"Left", "Right"},
+      options.primaryButton,
+      fn(choice: string)
+        options.primaryButton = choice
+        changed()
+      end
+    )
+    local pointerRows: table<View> = {
+      Row("Pointer speed", speed),
+      Row("Primary button", primary),
+    }
+    local host = MousePane.hostName(settings.info.host)
+    if host != "" then
+      local where = "Running in a window on " .. host
+      local said = where .. ", which moves the pointer: set its speed there."
+      local note = Text(said).font(12.0).foregroundStyle(Style.dimText)
+      Table.insert(pointerRows, MousePane.noteRow(note))
+    end
+
+    local scroll = SliderControl(
+      options.scrollSpeed,
+      0.25,
+      3.0,
+      0.25,
+      "×",
+      fn(v: float)
+        options.scrollSpeed = v
+        changed()
+      end,
+      format: "%.2f"
+    )
+    local natural = Toggle(
+      value: options.naturalScrolling,
+      onChanged: fn(on: boolean)
+        options.naturalScrolling = on
+        changed()
+      end
+    )
+    local scrollRows: table<View> = {
+      Row("Scroll speed", scroll),
+      Row("Natural scrolling", natural),
+    }
+
+    local follows = Toggle(
+      value: options.focusFollowsPointer,
+      onChanged: fn(on: boolean)
+        options.focusFollowsPointer = on
+        changed()
+      end
+    )
+    local windowRows: table<View> = {Row("Focus follows the pointer", follows)}
+
+    local groups: table<View> = {
+      PaneTitle("Mouse"),
+      Group("Pointer", pointerRows),
+      Group("Scrolling", scrollRows),
+      Group("Windows", windowRows),
+    }
+    local fill = StackAlignment.Fill
+    local column = VStack(alignment: fill, spacing: 18.0, children: groups)
+    local inset = EdgeInsets.only(right: 8.0)
+    return ScrollView(child: column.padding(insets: inset))
+  end
+
+  -- The desktop the window manager is nested in, as people call it, or ""
+  -- on Saule Linux's own screen.
+  static fn hostName(host: string) -> string
+    return match host
+      case "windows" then "Windows"
+      case "macos" then "macOS"
+      case "linux" then "another Linux desktop"
+      case _ then ""
+    end
+  end
+
+  -- A row with only words in it, inset as a row's label is.
+  static fn noteRow(note: View) -> View
+    local inset = EdgeInsets.symmetric(horizontal: 14.0, vertical: 10.0)
+    return note.padding(insets: inset)
+  end
+end

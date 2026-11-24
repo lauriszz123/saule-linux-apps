@@ -3,5 +3,7 @@
 export from WindowsPane import *
 export from AppearancePane import *
 export from WallpaperPane import *
+export from KeyboardPane import *
+export from MousePane import *
 export from AboutPane import *
 export from OfflinePane import *

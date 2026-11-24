@@ -12,6 +12,10 @@ export class SliderControl extends View
   -- What the value reads as: "8 px", "10".
   unit: string
 
+  -- How the number is written, as `String.format` takes it: "%.0f" a
+  -- whole number, "%.2f" two places.
+  format: string
+
   onChanged: fn(float) -> nil
 
   fn init(
@@ -21,6 +25,7 @@ export class SliderControl extends View
     step: float,
     unit: string,
     onChanged: fn(float) -> nil,
+    format: string = "%.0f",
     key: string? = nil
   )
     self.super(key)
@@ -30,6 +35,7 @@ export class SliderControl extends View
     self.step = step
     self.unit = unit
     self.onChanged = onChanged
+    self.format = format
   end
 
   fn body(context: BuildContext) -> View
@@ -41,9 +47,13 @@ export class SliderControl extends View
       width: 130.0,
       onChanged: self.onChanged
     )
-    local said = String.format("%.0f", self.value) .. self.unit
+    local said = String.format(self.format, self.value) .. self.unit
     local shown = Text(said).font(12.0).foregroundStyle(Style.dimText)
-    return HStack(alignment: StackAlignment.Center, spacing: 8.0) do
+    -- As wide as the slider and its number, so it sits beside its label
+    -- where there is room, as a row's control should.
+    local fit = StackSize.Fit
+    local centre = StackAlignment.Center
+    return HStack(alignment: centre, spacing: 8.0, sizing: fit) do
       show(slider)
       shown.frame(width: 40.0)
     end
