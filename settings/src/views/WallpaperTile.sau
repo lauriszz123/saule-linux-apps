@@ -1,16 +1,29 @@
--- One wallpaper to pick: a small picture of it, drawn the way the window
--- manager draws the real one (a wash corner to corner, a glow up on the
--- right), ringed in `accent` when it is the one in use.
+-- One wallpaper to pick: a small picture of it, drawn by the same code as
+-- the real one (wmapi's `WallpaperArt`), with rounded corners, and ringed
+-- in `accent` when it is the one in use. An animated one moves here too.
+--
+-- Each picture is drawn into an image once and kept, by name and size: a
+-- landscape takes many shapes and blurs, which a list of them redrawn
+-- every frame would feel. An animated one is drawn again a few times a
+-- second, as the window manager draws it.
 
 import shine
 from uikit import *
-from "wmapi" import Preset
-from theme import Style
+from "wmapi" import Preset, WallpaperArt
 
 export class WallpaperTile extends View
   preset: Preset
   chosen: boolean
   accent: Color
+
+  -- The pictures drawn so far, by name and size.
+  static local drawn: table<string, Canvas> = {}
+
+  -- How often an animated one is drawn again, a second; when it last
+  -- was, and the time it was drawn as.
+  static frameRate: float = 20.0
+  static local last: float = 0.0
+  static local time: float = 0.0
 
   fn init(preset: Preset, chosen: boolean, accent: Color, key: string? = nil)
     self.super(key)
@@ -23,48 +36,73 @@ export class WallpaperTile extends View
     return constraints.biggest()
   end
 
-  fn paint(el: Element, x: float, y: float) -> nil
-    local w = el.size.width
-    local h = el.size.height
-    local c = self.preset.colours
-    local r = 6.0
+  -- It has a tick to run: see `View.ticks`.
+  fn ticks() -> boolean
+    return WallpaperArt.moves(self.preset.name)
+  end
 
-    local wash = WallpaperTile.stops(
-      {
-        Style.colour(c[1]),
-        Style.colour(c[2]),
-        Style.colour(c[3]),
-      }
-    )
-    Graphics.setLinearGradient(x, y, x + w, y + h, wash)
-    Graphics.rectangle("fill", x, y, w, h, r)
-
-    local glow = Style.colour(c[4])
-    local fade = WallpaperTile.stops({glow, glow.withAlpha(0.0)})
-    Graphics.setRadialGradient(x + w * 0.85, y + h * 0.15, w * 0.55, fade)
-    Graphics.rectangle("fill", x, y, w, h, r)
-    Graphics.clearGradient()
-
-    if self.chosen then
-      self.accent.apply()
-      Graphics.setLineWidth(2.0)
-      Graphics.rectangle("line", x - 2.0, y - 2.0, w + 4.0, h + 4.0, r + 2.0)
+  -- Every animated tile ticks: the first one due draws them all again.
+  fn tick(el: Element, dt: float) -> nil
+    local now = Timer.getTime()
+    if now - WallpaperTile.last >= 1.0 / WallpaperTile.frameRate then
+      WallpaperTile.last = now
+      WallpaperTile.time = now
+      Repaint.request()
     end
   end
 
-  -- Gradient stops the way Shine takes them: for each colour, where it
-  -- sits from 0 to 1, then its red, green, blue and alpha.
-  static fn stops(colours: table<Color>) -> table<float>
-    local stops: table<float> = {}
-    local last = (#colours - 1) as float
-    for i = 1, #colours do
-      local colour = colours[i]
-      Table.insert(stops, ((i - 1) as float) / last)
-      Table.insert(stops, colour.r)
-      Table.insert(stops, colour.g)
-      Table.insert(stops, colour.b)
-      Table.insert(stops, colour.a)
+  fn paint(el: Element, x: float, y: float) -> nil
+    local w = el.size.width
+    local h = el.size.height
+    local r = 7.0
+    local picture = WallpaperTile.picture(
+      self.preset,
+      w as integer,
+      h as integer
+    )
+    Graphics.setColor(1.0, 1.0, 1.0)
+    Graphics.drawRounded(picture, x, y, r)
+
+    -- A hairline round it, so a light one stands off the window.
+    Graphics.setColor(1.0, 1.0, 1.0, 0.12)
+    Graphics.setLineWidth(1.0)
+    Graphics.rectangle("line", x + 0.5, y + 0.5, w - 1.0, h - 1.0, r)
+
+    if self.chosen then
+      self.accent.apply()
+      Graphics.setLineWidth(2.5)
+      Graphics.rectangle("line", x - 3.0, y - 3.0, w + 6.0, h + 6.0, r + 3.0)
     end
-    return stops
+  end
+
+  -- The picture of `preset`, `w` × `h`: the one drawn before, or drawn
+  -- now; an animated one drawn as it is now.
+  static fn picture(preset: Preset, w: integer, h: integer) -> Canvas
+    local key = preset.name .. ":" .. tostring(w) .. "x" .. tostring(h)
+    local kept = WallpaperTile.drawn[key]
+    local moves = WallpaperArt.moves(preset.name)
+    if kept != nil and not moves then
+      return kept!
+    end
+    local image = kept ?? Graphics.newCanvas(w, h)
+    local screen = Graphics.getCanvas()
+    local sx, sy, sw, sh = Graphics.getScissor()
+    Graphics.push("all")
+    Graphics.setCanvas(image)
+    Graphics.origin()
+    Graphics.setScissor()
+    WallpaperArt.paint(
+      preset.name,
+      0.0,
+      0.0,
+      w as float,
+      h as float,
+      WallpaperTile.time
+    )
+    Graphics.pop()
+    Graphics.setCanvas(screen)
+    Graphics.setScissor(sx, sy, sw, sh)
+    WallpaperTile.drawn[key] = image
+    return image
   end
 end

@@ -1,4 +1,6 @@
--- The wallpaper, picked from pictures of each.
+-- The wallpaper, picked from pictures of each, in four groups: photos,
+-- pictures (landscapes, drawn at any size), gradients, and animated
+-- gradients that drift slowly.
 
 from uikit import *
 from "wmapi" import Preset, Presets
@@ -11,8 +13,8 @@ export class WallpaperPane extends View
   changed: fn() -> nil
 
   -- How big each picture is.
-  static tileWidth: float = 96.0
-  static tileHeight: float = 60.0
+  static tileWidth: float = 128.0
+  static tileHeight: float = 80.0
 
   fn init(settings: SystemSettings, changed: fn() -> nil, key: string? = nil)
     self.super(key)
@@ -22,16 +24,32 @@ export class WallpaperPane extends View
 
   fn body(context: BuildContext) -> View
     local accent = Theme.of(context).primary
+    local sections: table<View> = {
+      PaneTitle("Wallpaper"),
+      self.section("Photos", Presets.photos, accent),
+      self.section("Pictures", Presets.pictures, accent),
+      self.section("Gradients", Presets.wallpapers, accent),
+      self.section("Animated", Presets.animated, accent),
+    }
+    local fill = StackAlignment.Fill
+    local column = VStack(alignment: fill, spacing: 18.0, children: sections)
+    local inset = EdgeInsets.only(left: 4.0, top: 4.0, right: 8.0, bottom: 8.0)
+    return ScrollView(child: column.padding(insets: inset))
+  end
+
+  -- A heading, and the pictures of `presets` under it.
+  local fn section(title: string, presets: table<Preset>, accent: Color) -> View
     local pictures: table<View> = {}
-    for preset in Presets.wallpapers do
+    for preset in presets do
       Table.insert(pictures, self.choice(preset, accent))
     end
-
-    return VStack(alignment: StackAlignment.Fill, spacing: 18.0) do
-      PaneTitle("Wallpaper")
-      Flow(pictures)
-      Spacer()
-    end
+    local heading = Text(title).font(12.0).foregroundStyle(Style.dimText)
+    local items: table<View> = {
+      heading.padding(insets: EdgeInsets.only(left: 2.0)),
+      Flow(pictures, spacing: 16.0),
+    }
+    local fill = StackAlignment.Fill
+    return VStack(alignment: fill, spacing: 10.0, children: items)
   end
 
   -- One wallpaper's picture with its name under it; clicking it uses it.
@@ -45,14 +63,15 @@ export class WallpaperPane extends View
       height: WallpaperPane.tileHeight
     )
     local name = Text(preset.title).font(12.0).foregroundStyle(Style.dimText)
-    local shown = VStack(alignment: StackAlignment.Center, spacing: 6.0) do
-      show(picture)
-      show(name)
-    end
+    local items: table<View> = {picture, name}
+    local center = StackAlignment.Center
+    local shown = VStack(alignment: center, spacing: 6.0, children: items)
     local pick = fn()
       options.wallpaper = preset.name
       changed()
     end
-    return GestureArea(child: shown, onTap: pick)
+    -- Room round the picture for the ring that marks the chosen one.
+    local ring = EdgeInsets.all(3.0)
+    return GestureArea(child: shown.padding(insets: ring), onTap: pick)
   end
 end
