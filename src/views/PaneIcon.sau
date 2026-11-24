@@ -1,0 +1,111 @@
+-- A pane's icon, as the Mac draws them: a white symbol on a rounded square
+-- of the pane's colour. Drawn rather than taken from an icon font, which
+-- an app can't ship yet; each symbol is a few shapes.
+
+import shine
+from uikit import *
+from model import Pane
+
+export class PaneIcon extends View
+  pane: Pane
+
+  fn init(pane: Pane, key: string? = nil)
+    self.super(key)
+    self.pane = pane
+  end
+
+  fn layout(el: Element, constraints: Constraints) -> Size
+    return constraints.biggest()
+  end
+
+  fn paint(el: Element, x: float, y: float) -> nil
+    local s = Math.min(el.size.width, el.size.height)
+    PaneIcon.colour(self.pane).apply()
+    Graphics.rectangle("fill", x, y, s, s, s * 0.24)
+
+    Graphics.setColor(1.0, 1.0, 1.0)
+    match self.pane
+      case Pane.Windows then PaneIcon.windows(x, y, s)
+      case Pane.Appearance then PaneIcon.appearance(x, y, s)
+      case Pane.Wallpaper then PaneIcon.wallpaper(x, y, s)
+      case Pane.About then PaneIcon.about(x, y, s)
+    end
+  end
+
+  static fn colour(pane: Pane) -> Color
+    return match pane
+      case Pane.Windows then Color(0.25, 0.52, 0.96)
+      case Pane.Appearance then Color(0.33, 0.34, 0.38)
+      case Pane.Wallpaper then Color(0.16, 0.66, 0.84)
+      case Pane.About then Color(0.52, 0.53, 0.58)
+    end
+  end
+
+  -- Two windows side by side: the tiling.
+  static fn windows(x: float, y: float, s: float) -> nil
+    local w = s * 0.27
+    local h = s * 0.5
+    local top = y + s * 0.25
+    Graphics.rectangle("fill", x + s * 0.2, top, w, h, s * 0.05)
+    Graphics.rectangle("fill", x + s * 0.53, top, w, h, s * 0.05)
+  end
+
+  -- A circle, half light and half dark.
+  static fn appearance(x: float, y: float, s: float) -> nil
+    local cx = x + s * 0.5
+    local cy = y + s * 0.5
+    local r = s * 0.28
+    Graphics.setLineWidth(Math.max(s * 0.07, 1.0))
+    Graphics.circle("line", cx, cy, r)
+
+    -- The left half, filled: a fan of points round the half circle.
+    local points: table<float> = {}
+    for i = 0, 12 do
+      local angle = Math.pi * 0.5 + Math.pi * (i as float) / 12.0
+      Table.insert(points, cx + Math.cos(angle) * r)
+      Table.insert(points, cy - Math.sin(angle) * r)
+    end
+    Graphics.polygon("fill", points)
+  end
+
+  -- A mountain under a sun.
+  static fn wallpaper(x: float, y: float, s: float) -> nil
+    Graphics.circle("fill", x + s * 0.68, y + s * 0.32, s * 0.09)
+    Graphics.polygon(
+      "fill",
+      {
+        x + s * 0.18,
+        y + s * 0.74,
+        x + s * 0.42,
+        y + s * 0.36,
+        x + s * 0.62,
+        y + s * 0.74,
+      }
+    )
+    Graphics.polygon(
+      "fill",
+      {
+        x + s * 0.46,
+        y + s * 0.74,
+        x + s * 0.62,
+        y + s * 0.5,
+        x + s * 0.82,
+        y + s * 0.74,
+      }
+    )
+  end
+
+  -- An "i".
+  static fn about(x: float, y: float, s: float) -> nil
+    local w = s * 0.12
+    Graphics.circle("fill", x + s * 0.5, y + s * 0.28, w * 0.7)
+    Graphics.rectangle(
+      "fill",
+      x + s * 0.5 - w / 2.0,
+      y + s * 0.42,
+      w,
+      s * 0.34,
+      w / 2.0
+    )
+  end
+end

@@ -1,0 +1,56 @@
+-- One row of a group: what it is on the left, the control that changes it
+-- on the right. In a window too narrow for both on one line — Settings
+-- tiled beside another window — the control goes under its label instead,
+-- as a phone's settings do, rather than off the edge.
+
+from uikit import *
+from theme import Style
+
+export class Row extends View
+  children: table<View>
+
+  -- Space round the row's contents, and between label and control.
+  static inset: float = 14.0
+  static gap: float = 12.0
+
+  fn init(label: string, control: View, key: string? = nil)
+    self.super(key)
+    local text = Text(label).font(13.0).foregroundStyle(Style.text)
+    self.children = claimedAll({text, control})
+  end
+
+  fn childViews() -> table<View>
+    return self.children
+  end
+
+  fn layout(el: Element, constraints: Constraints) -> Size
+    local width = constraints.maxWidth
+    local inset = Row.inset
+    local room = Math.max(width - 2.0 * inset, 0.0)
+    local label = el.childAt(1)!
+    local control = el.childAt(2)!
+
+    -- Each at the size it wants, no wider than the row.
+    local loose = Constraints.loose(Size(room, Constraints.infinity()))
+    label.layout(loose)
+    control.layout(loose)
+    local lw = label.size.width
+    local lh = label.size.height
+    local cw = control.size.width
+    local ch = control.size.height
+
+    -- Side by side, each centred on the row's height.
+    if lw + Row.gap + cw <= room then
+      local height = Math.max(Style.rowHeight, Math.max(lh, ch) + 8.0)
+      label.offset = Offset(inset, (height - lh) / 2.0)
+      control.offset = Offset(width - inset - cw, (height - ch) / 2.0)
+      return Size(width, height)
+    end
+
+    -- One above the other.
+    local top = 10.0
+    label.offset = Offset(inset, top)
+    control.offset = Offset(inset, top + lh + 6.0)
+    return Size(width, top + lh + 6.0 + ch + top)
+  end
+end

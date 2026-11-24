@@ -1,0 +1,40 @@
+-- A group of rows, the way System Settings groups them: a rounded card
+-- with a hairline between each row, and a small heading above it.
+
+from uikit import *
+from theme import Style
+
+export class Group extends View
+  heading: string
+  rows: table<View>
+
+  fn init(heading: string, rows: table<View>, key: string? = nil)
+    self.super(key)
+    self.heading = heading
+    self.rows = claimedAll(rows)
+  end
+
+  fn body(context: BuildContext) -> View
+    local fill = StackAlignment.Fill
+    local items: table<View> = {}
+    for i = 1, #self.rows do
+      if i > 1 then
+        Table.insert(items, Group.hairline())
+      end
+      Table.insert(items, self.rows[i])
+    end
+    local card = VStack(alignment: fill, children: items)
+
+    local title = Text(self.heading).font(12.0).foregroundStyle(Style.dimText)
+    return VStack(alignment: fill, spacing: 6.0) do
+      title.padding(insets: EdgeInsets.only(left: 4.0))
+      card.background(Style.card, Style.cardRadius)
+    end
+  end
+
+  -- Between two rows, inset from the left as on a Mac.
+  static fn hairline() -> View
+    local line = Spacer().frame(height: 1.0).background(Style.hairline)
+    return line.padding(insets: EdgeInsets.only(left: 14.0))
+  end
+end

@@ -1,0 +1,76 @@
+-- The window manager's settings, and the connection they come through.
+--
+-- Everything here is a copy: the window manager holds the real values,
+-- and `apply` sends the whole set back. If the window manager can't be
+-- reached — Settings run on its own, or the window manager gone — this
+-- says why, and changing anything does nothing until `connect` succeeds.
+
+from "wmapi" import SystemInfo, WmOptions, WmService, WmSettings
+
+export class SystemSettings
+  options: WmOptions
+  info: SystemInfo
+
+  -- Why there is no connection, or "" when there is one.
+  problem: string
+
+  local wm: WmSettings?
+
+  fn init()
+    self.options = WmOptions()
+    self.info = SystemInfo()
+    self.problem = ""
+    self.wm = nil
+    self.connect()
+  end
+
+  fn connected() -> boolean
+    return self.wm != nil
+  end
+
+  -- Reach the window manager, and read what it has.
+  fn connect() -> nil
+    try
+      local wm = WmSettings.connect(WmService.name)
+      self.options = wm.options()
+      self.info = wm.about()
+      self.wm = wm
+      self.problem = ""
+    catch e: string
+      self.lose(e)
+    end
+  end
+
+  -- Send `options` as they are now, and keep what the window manager
+  -- made of them: it keeps values to sensible ranges.
+  fn apply() -> nil
+    local wm = self.wm
+    if wm == nil then
+      return
+    end
+    try
+      wm!.apply(self.options)
+      self.options = wm!.options()
+    catch e: string
+      self.lose(e)
+    end
+  end
+
+  -- Ask again what the system is like: the About pane shows it fresh.
+  fn refreshInfo() -> nil
+    local wm = self.wm
+    if wm == nil then
+      return
+    end
+    try
+      self.info = wm!.about()
+    catch e: string
+      self.lose(e)
+    end
+  end
+
+  local fn lose(problem: string) -> nil
+    self.wm = nil
+    self.problem = problem
+  end
+end

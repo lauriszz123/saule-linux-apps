@@ -1,0 +1,44 @@
+-- The list of panes down the left, as on a Mac.
+
+from uikit import *
+from model import Pane
+from theme import Style
+from SidebarRow import SidebarRow
+
+export class Sidebar extends View
+  open: Pane
+  onOpen: fn(Pane) -> nil
+
+  fn init(open: Pane, onOpen: fn(Pane) -> nil, key: string? = nil)
+    self.super(key)
+    self.open = open
+    self.onOpen = onOpen
+  end
+
+  -- The panes, in the order they are listed.
+  static order: table<Pane> = {
+    Pane.Windows,
+    Pane.Appearance,
+    Pane.Wallpaper,
+    Pane.About,
+  }
+
+  fn body(context: BuildContext) -> View
+    local rows: table<View> = {}
+    for pane in Sidebar.order do
+      local open = fn()
+        self.onOpen(pane)
+      end
+      Table.insert(rows, SidebarRow(pane, pane == self.open, open))
+    end
+
+    local fill = StackAlignment.Fill
+    local list = VStack(alignment: fill, spacing: 2.0, children: rows)
+    local column = VStack(alignment: fill) do
+      show(list)
+      Spacer()
+    end
+    local inset = EdgeInsets.symmetric(horizontal: 10.0, vertical: 14.0)
+    return column.padding(insets: inset).background(Style.sidebar)
+  end
+end

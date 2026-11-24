@@ -1,0 +1,81 @@
+-- The Settings window: the sidebar of panes, and the pane that is open
+-- beside it.
+--
+-- Every change goes the same way: a pane edits the settings, calls
+-- `changed`, and that sends them to the window manager and builds the
+-- window again from what it answered — so what is shown is always what
+-- the window manager is using.
+
+from uikit import *
+from "wmapi" import Presets
+from model import Pane, SystemSettings
+from theme import Style
+from views import Sidebar
+from panes import AboutPane, AppearancePane, OfflinePane, WallpaperPane
+from panes import WindowsPane
+
+export class SettingsWindow extends View
+  settings: SystemSettings
+
+  fn init(settings: SystemSettings, key: string? = nil)
+    self.super(key)
+    self.settings = settings
+  end
+
+  fn body(context: BuildContext) -> View
+    local settings = self.settings
+    local revision = context.state("revision", 0)
+    local opened = context.state("pane", 1)
+    local open = Sidebar.order[opened.int(1)]
+
+    local refresh = fn()
+      revision.set(revision.int(0) + 1)
+    end
+    local changed = fn()
+      settings.apply()
+      refresh()
+    end
+    local openPane = fn(pane: Pane)
+      for i = 1, #Sidebar.order do
+        if Sidebar.order[i] == pane then
+          opened.set(i)
+        end
+      end
+      -- About shows the system as it is now, not as it was at launch.
+      if pane == Pane.About then
+        settings.refreshInfo()
+      end
+    end
+
+    local pane = self.pane(open, changed)
+    if not settings.connected() then
+      pane = OfflinePane(settings, refresh)
+    end
+
+    local accent = Presets.find(Presets.accents, settings.options.accent)
+    local layout = HStack(alignment: StackAlignment.Fill) do
+      Sidebar(open, openPane).frame(width: Style.sidebarWidth)
+      pane.padding(Style.padding).expanded()
+    end
+    return Theme(
+      data: Style.theme(Style.colour(accent.colours[1])),
+      child: layout.background(Style.window)
+    )
+  end
+
+  -- The view of the pane `open`.
+  local fn pane(open: Pane, changed: fn() -> nil) -> View
+    local settings = self.settings
+    local pane: View = AboutPane(settings)
+    match open
+      case Pane.Windows then
+        pane = WindowsPane(settings, changed)
+      case Pane.Appearance then
+        pane = AppearancePane(settings, changed)
+      case Pane.Wallpaper then
+        pane = WallpaperPane(settings, changed)
+      case Pane.About then nil
+    end
+    return pane
+  end
+end

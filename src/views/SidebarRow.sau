@@ -1,0 +1,42 @@
+-- One pane in the sidebar: its icon and its name, lit in the accent when
+-- it is the one open. Clicking it opens it.
+
+from uikit import *
+from model import Pane
+from theme import Style
+from PaneIcon import PaneIcon
+
+export class SidebarRow extends View
+  pane: Pane
+  selected: boolean
+  onOpen: fn() -> nil
+
+  fn init(
+    pane: Pane,
+    selected: boolean,
+    onOpen: fn() -> nil,
+    key: string? = nil
+  )
+    self.super(key)
+    self.pane = pane
+    self.selected = selected
+    self.onOpen = onOpen
+  end
+
+  fn body(context: BuildContext) -> View
+    local fill: Color? = nil
+    if self.selected then
+      fill = Theme.of(context).primary
+    end
+
+    local row = HStack(alignment: StackAlignment.Center, spacing: 8.0) do
+      PaneIcon(self.pane).frame(width: 20.0, height: 20.0)
+      Text(self.pane.title()).font(13.0).foregroundStyle(Style.text)
+      Spacer()
+    end
+
+    local inset = EdgeInsets.symmetric(horizontal: 8.0, vertical: 5.0)
+    local shown = row.padding(insets: inset).background(fill, 6.0)
+    return GestureArea(child: shown, onTap: self.onOpen)
+  end
+end

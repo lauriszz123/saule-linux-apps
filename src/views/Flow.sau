@@ -1,0 +1,47 @@
+-- Children placed left to right, as many to a line as fit, then on to the
+-- next line: so a pane of pictures uses the room a window has, whether it
+-- fills the screen or is tiled beside another.
+
+from uikit import *
+
+export class Flow extends View
+  children: table<View>
+  spacing: float
+
+  fn init(children: table<View>, spacing: float = 14.0, key: string? = nil)
+    self.super(key)
+    self.children = claimedAll(children)
+    self.spacing = spacing
+  end
+
+  fn childViews() -> table<View>
+    return self.children
+  end
+
+  fn layout(el: Element, constraints: Constraints) -> Size
+    local width = constraints.maxWidth
+    local loose = Constraints.loose(Size(width, Constraints.infinity()))
+    local x = 0.0
+    local y = 0.0
+    local line = 0.0
+
+    for i = 1, el.childCount() do
+      local child = el.childAt(i)!
+      child.layout(loose)
+      local w = child.size.width
+
+      -- Doesn't fit after what is already on this line: start the next.
+      if x > 0.0 and x + w > width then
+        x = 0.0
+        y += line + self.spacing
+        line = 0.0
+      end
+
+      child.offset = Offset(x, y)
+      x += w + self.spacing
+      line = Math.max(line, child.size.height)
+    end
+
+    return Size(width, y + line)
+  end
+end

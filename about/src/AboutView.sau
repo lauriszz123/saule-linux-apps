@@ -1,0 +1,93 @@
+-- The window's one view, laid out as About This Mac:
+--
+--           ( ☀ )
+--        Saule Linux
+--       Version 26.31
+--
+--   Processor   Intel Atom N450 …
+--   Memory      1 GB
+--   Kernel      6.18.64-saule
+--   Display     1024 × 600
+--   Window manager    0.1.0
+--
+-- A value the system couldn't give is a dash.
+
+from uikit import *
+from "wmapi" import SystemInfo
+from SunMark import SunMark
+
+export class AboutView extends View
+  info: SystemInfo
+
+  static background: Color = Color(0.15, 0.15, 0.17)
+  static text: Color = Color(0.95, 0.95, 0.97)
+  static dimText: Color = Color(1.0, 1.0, 1.0, 0.55)
+
+  fn init(info: SystemInfo, key: string? = nil)
+    self.super(key)
+    self.info = info
+  end
+
+  fn body(context: BuildContext) -> View
+    local info = self.info
+    local text = AboutView.text
+    local dim = AboutView.dimText
+
+    local version = "Version " .. AboutView.dash(info.saule)
+    local processor = info.processor
+    if info.cores > 1 then
+      processor = processor .. " (" .. info.cores .. " threads)"
+    end
+    local memory = ""
+    if info.memory > 0 then
+      local gb = (info.memory as float) / 1048576.0
+      memory = String.format("%.0f GB", Math.max(gb, 1.0))
+      if gb < 0.95 then
+        memory = String.format("%.0f MB", (info.memory as float) / 1024.0)
+      end
+    end
+    local display = ""
+    if info.screenWidth > 0 then
+      display = info.screenWidth .. " × " .. info.screenHeight
+    end
+
+    local name = Text("Saule Linux").font(22.0).foregroundStyle(text)
+    local said = Text(version).font(12.0).foregroundStyle(dim)
+    local facts = VStack(alignment: StackAlignment.Fill, spacing: 6.0) do
+      AboutView.fact("Processor", processor)
+      AboutView.fact("Memory", memory)
+      AboutView.fact("Kernel", info.kernel)
+      AboutView.fact("Display", display)
+      AboutView.fact("Window manager", info.wm)
+    end
+
+    local column = VStack(alignment: StackAlignment.Center, spacing: 6.0) do
+      Spacer().frame(height: 18.0)
+      SunMark().frame(width: 96.0, height: 96.0)
+      Spacer().frame(height: 8.0)
+      show(name)
+      show(said)
+      Spacer().frame(height: 14.0)
+      facts.padding(insets: EdgeInsets.symmetric(horizontal: 20.0))
+      Spacer()
+    end
+    return column.background(AboutView.background)
+  end
+
+  -- One fact: its name on the left, dim, and its value beside it.
+  static fn fact(label: string, value: string) -> View
+    local name = Text(label).font(12.0).foregroundStyle(AboutView.text)
+    local said = Text(AboutView.dash(value)).font(12.0)
+    return HStack(alignment: StackAlignment.Leading, spacing: 10.0) do
+      name.frame(width: 96.0)
+      said.foregroundStyle(AboutView.dimText).lineLimit(2).expanded()
+    end
+  end
+
+  static fn dash(value: string) -> string
+    if value == "" then
+      return "—"
+    end
+    return value
+  end
+end

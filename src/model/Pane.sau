@@ -1,0 +1,17 @@
+-- The panes Settings has, in the order the sidebar lists them.
+
+export enum Pane
+  Windows,
+  Appearance,
+  Wallpaper,
+  About
+
+  fn title() -> string
+    return match self
+      case Pane.Windows then "Windows"
+      case Pane.Appearance then "Appearance"
+      case Pane.Wallpaper then "Wallpaper"
+      case Pane.About then "About"
+    end
+  end
+end

@@ -1,0 +1,50 @@
+-- A segmented control: a few choices side by side on one track, the chosen
+-- one raised. What macOS uses for two or three short choices.
+
+from uikit import *
+from theme import Style
+
+export class Segmented extends View
+  choices: table<string>
+  titles: table<string>
+  value: string
+  onChanged: fn(string) -> nil
+
+  fn init(
+    choices: table<string>,
+    titles: table<string>,
+    value: string,
+    onChanged: fn(string) -> nil,
+    key: string? = nil
+  )
+    self.super(key)
+    self.choices = choices
+    self.titles = titles
+    self.value = value
+    self.onChanged = onChanged
+  end
+
+  fn body(context: BuildContext) -> View
+    local segments: table<View> = {}
+    for i = 1, #self.choices do
+      local choice = self.choices[i]
+      local fill: Color? = nil
+      if choice == self.value then
+        fill = Style.segment
+      end
+      local title = Text(self.titles[i]).font(12.0).foregroundStyle(Style.text)
+      local inset = EdgeInsets.symmetric(horizontal: 12.0, vertical: 3.0)
+      local shown = title.padding(insets: inset).background(fill, 5.0)
+      local pick = fn()
+        self.onChanged(choice)
+      end
+      Table.insert(segments, GestureArea(child: shown, onTap: pick))
+    end
+
+    -- As wide as its segments, wherever it is put: a track stretched past
+    -- them reads as empty choices.
+    local fit = StackSize.Fit
+    local row = HStack(spacing: 2.0, sizing: fit, children: segments)
+    return row.padding(2.0).background(Style.track, 7.0)
+  end
+end

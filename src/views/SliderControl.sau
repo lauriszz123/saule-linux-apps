@@ -1,0 +1,51 @@
+-- A slider with its value written beside it, for a row of a group.
+
+from uikit import *
+from theme import Style
+
+export class SliderControl extends View
+  value: float
+  min: float
+  max: float
+  step: float
+
+  -- What the value reads as: "8 px", "10".
+  unit: string
+
+  onChanged: fn(float) -> nil
+
+  fn init(
+    value: float,
+    min: float,
+    max: float,
+    step: float,
+    unit: string,
+    onChanged: fn(float) -> nil,
+    key: string? = nil
+  )
+    self.super(key)
+    self.value = value
+    self.min = min
+    self.max = max
+    self.step = step
+    self.unit = unit
+    self.onChanged = onChanged
+  end
+
+  fn body(context: BuildContext) -> View
+    local slider = Slider(
+      value: self.value,
+      min: self.min,
+      max: self.max,
+      step: self.step,
+      width: 130.0,
+      onChanged: self.onChanged
+    )
+    local said = String.format("%.0f", self.value) .. self.unit
+    local shown = Text(said).font(12.0).foregroundStyle(Style.dimText)
+    return HStack(alignment: StackAlignment.Center, spacing: 8.0) do
+      show(slider)
+      shown.frame(width: 40.0)
+    end
+  end
+end

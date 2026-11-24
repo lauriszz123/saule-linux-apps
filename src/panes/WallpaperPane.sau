@@ -1,0 +1,58 @@
+-- The wallpaper, picked from pictures of each.
+
+from uikit import *
+from "wmapi" import Preset, Presets
+from model import SystemSettings
+from theme import Style
+from views import Flow, PaneTitle, WallpaperTile
+
+export class WallpaperPane extends View
+  settings: SystemSettings
+  changed: fn() -> nil
+
+  -- How big each picture is.
+  static tileWidth: float = 96.0
+  static tileHeight: float = 60.0
+
+  fn init(settings: SystemSettings, changed: fn() -> nil, key: string? = nil)
+    self.super(key)
+    self.settings = settings
+    self.changed = changed
+  end
+
+  fn body(context: BuildContext) -> View
+    local accent = Theme.of(context).primary
+    local pictures: table<View> = {}
+    for preset in Presets.wallpapers do
+      Table.insert(pictures, self.choice(preset, accent))
+    end
+
+    return VStack(alignment: StackAlignment.Fill, spacing: 18.0) do
+      PaneTitle("Wallpaper")
+      Flow(pictures)
+      Spacer()
+    end
+  end
+
+  -- One wallpaper's picture with its name under it; clicking it uses it.
+  local fn choice(preset: Preset, accent: Color) -> View
+    local options = self.settings.options
+    local changed = self.changed
+    local chosen = preset.name == options.wallpaper
+
+    local picture = WallpaperTile(preset, chosen, accent).frame(
+      width: WallpaperPane.tileWidth,
+      height: WallpaperPane.tileHeight
+    )
+    local name = Text(preset.title).font(12.0).foregroundStyle(Style.dimText)
+    local shown = VStack(alignment: StackAlignment.Center, spacing: 6.0) do
+      show(picture)
+      show(name)
+    end
+    local pick = fn()
+      options.wallpaper = preset.name
+      changed()
+    end
+    return GestureArea(child: shown, onTap: pick)
+  end
+end

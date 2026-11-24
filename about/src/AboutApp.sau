@@ -1,0 +1,30 @@
+-- About This System as a uikit app: one small window.
+
+from uikit import *
+from "wmapi" import SystemInfo, WmService, WmSettings
+from AboutView import AboutView
+
+export class AboutApp extends App
+  info: SystemInfo
+
+  fn init()
+    self.super()
+    self.info = AboutApp.ask()
+  end
+
+  fn body() -> Scene
+    return WindowGroup(title: "About This System", width: 300, height: 420) do
+      AboutView(self.info)
+    end
+  end
+
+  -- What the window manager knows about the system; nothing known when it
+  -- can't be reached (run on its own), which shows as dashes.
+  static fn ask() -> SystemInfo
+    try
+      return WmSettings.connect(WmService.name).about()
+    catch e: string
+      return SystemInfo()
+    end
+  end
+end

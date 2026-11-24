@@ -1,0 +1,15 @@
+--[[
+About This System: what this computer is, as a Mac's About This Mac
+shows it. Opened from the system menu behind the sun.
+
+It asks the window manager (the `saule.wm` service, saule-wm's `wmapi`).
+]]
+
+from uikit import App
+from AboutApp import AboutApp
+
+class Main
+  static fn main()
+    AboutApp().run()
+  end
+end

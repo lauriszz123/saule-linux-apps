@@ -1,0 +1,66 @@
+-- How windows are tiled: the gaps between them, how they resize, and
+-- where a new one goes.
+
+from uikit import *
+from model import SystemSettings
+from views import Group, PaneTitle, Row, Segmented, SliderControl
+
+export class WindowsPane extends View
+  settings: SystemSettings
+  changed: fn() -> nil
+
+  fn init(settings: SystemSettings, changed: fn() -> nil, key: string? = nil)
+    self.super(key)
+    self.settings = settings
+    self.changed = changed
+  end
+
+  fn body(context: BuildContext) -> View
+    local options = self.settings.options
+    local changed = self.changed
+
+    local gap = SliderControl(options.gap, 0.0, 24.0, 1.0, " px", fn(v: float)
+      options.gap = v
+      changed()
+    end)
+    local grab = SliderControl(
+      options.grab,
+      0.0,
+      12.0,
+      1.0,
+      " px",
+      fn(v: float)
+        options.grab = v
+        changed()
+      end
+    )
+    local step = options.resizeStep as float
+    local resize = SliderControl(step, 1.0, 50.0, 1.0, "", fn(v: float)
+      options.resizeStep = Math.floor(v + 0.5)
+      changed()
+    end)
+    local where = Segmented(
+      {"beside", "below"},
+      {"Beside", "Below"},
+      options.newWindows,
+      fn(choice: string)
+        options.newWindows = choice
+        changed()
+      end
+    )
+
+    return VStack(alignment: StackAlignment.Fill, spacing: 18.0) do
+      PaneTitle("Windows")
+      Group(
+        "Tiling",
+        {
+          Row("Space between windows", gap),
+          Row("Grab area beside a gap", grab),
+          Row("Resize step", resize),
+        }
+      )
+      Group("New windows", {Row("Open next to the focused one", where)})
+      Spacer()
+    end
+  end
+end

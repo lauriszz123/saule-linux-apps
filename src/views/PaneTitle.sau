@@ -1,0 +1,17 @@
+-- The big name at the top of a pane.
+
+from uikit import *
+from theme import Style
+
+export class PaneTitle extends View
+  title: string
+
+  fn init(title: string, key: string? = nil)
+    self.super(key)
+    self.title = title
+  end
+
+  fn body(context: BuildContext) -> View
+    return Text(self.title).font(20.0).foregroundStyle(Style.text)
+  end
+end

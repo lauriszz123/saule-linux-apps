@@ -1,0 +1,39 @@
+-- Saule's sun, large, for the top of the window: a white disc with eight
+-- rays on a round tile of the system's warm orange, as the Mac shows its
+-- picture of the computer. It fills the square it is given.
+
+import shine
+from uikit import *
+
+export class SunMark extends View
+  fn init(key: string? = nil)
+    self.super(key)
+  end
+
+  fn layout(el: Element, constraints: Constraints) -> Size
+    return constraints.biggest()
+  end
+
+  fn paint(el: Element, x: float, y: float) -> nil
+    local s = Math.min(el.size.width, el.size.height)
+    local cx = x + el.size.width / 2.0
+    local cy = y + el.size.height / 2.0
+
+    Graphics.setColor(0.98, 0.62, 0.30)
+    Graphics.circle("fill", cx, cy, s / 2.0)
+
+    Graphics.setColor(1.0, 1.0, 1.0)
+    Graphics.circle("fill", cx, cy, s * 0.16)
+    Graphics.setLineWidth(s * 0.05)
+    for i = 0, 7 do
+      local angle = Math.pi * (i as float) / 4.0
+      local dx = Math.cos(angle)
+      local dy = Math.sin(angle)
+      local near = s * 0.25
+      local far = s * 0.36
+      local x1 = cx + dx * near
+      local y1 = cy + dy * near
+      Graphics.line(x1, y1, cx + dx * far, cy + dy * far)
+    end
+  end
+end

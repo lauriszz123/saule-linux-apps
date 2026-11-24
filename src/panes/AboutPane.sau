@@ -1,0 +1,76 @@
+-- What this system is: Saule's version, the kernel, memory, the screen —
+-- like the Mac's About.
+
+from uikit import *
+from model import SystemSettings
+from theme import Style
+from views import Group, PaneTitle, Row
+
+export class AboutPane extends View
+  settings: SystemSettings
+
+  fn init(settings: SystemSettings, key: string? = nil)
+    self.super(key)
+    self.settings = settings
+  end
+
+  fn body(context: BuildContext) -> View
+    local info = self.settings.info
+
+    local memory = "—"
+    if info.memory > 0 then
+      memory = String.format("%.1f GB", (info.memory as float) / 1048576.0)
+    end
+    local display = "—"
+    if info.screenWidth > 0 then
+      display = info.screenWidth .. " × " .. info.screenHeight
+    end
+
+    local name = Text("Saule Linux").font(18.0).foregroundStyle(Style.text)
+    local version = "Saule " .. info.saule
+    local said = Text(version).font(12.0).foregroundStyle(Style.dimText)
+
+    return VStack(alignment: StackAlignment.Fill, spacing: 18.0) do
+      PaneTitle("About")
+      VStack(alignment: StackAlignment.Leading, spacing: 4.0) do
+        show(name)
+        show(said)
+      end
+      Group(
+        "This system",
+        {
+          AboutPane.fact("Window manager", info.wm),
+          AboutPane.fact("Kernel", info.kernel),
+          AboutPane.fact("Memory", memory),
+          AboutPane.fact("Display", display),
+          AboutPane.fact("Open windows", tostring(info.windows)),
+          AboutPane.fact("Up for", AboutPane.duration(info.uptime)),
+        }
+      )
+      Spacer()
+    end
+  end
+
+  -- A row that only tells: the value in place of a control. A value that
+  -- could not be found is a dash.
+  static fn fact(label: string, value: string) -> View
+    local shown = value
+    if shown == "" then
+      shown = "—"
+    end
+    return Row(label, Text(shown).font(13.0).foregroundStyle(Style.dimText))
+  end
+
+  -- "2 h 5 min", "12 min", or a dash before any time is known.
+  static fn duration(seconds: integer) -> string
+    if seconds <= 0 then
+      return ""
+    end
+    local minutes = Math.floor((seconds as float) / 60.0)
+    if minutes < 60 then
+      return minutes .. " min"
+    end
+    local hours = Math.floor((minutes as float) / 60.0)
+    return hours .. " h " .. (minutes - hours * 60) .. " min"
+  end
+end

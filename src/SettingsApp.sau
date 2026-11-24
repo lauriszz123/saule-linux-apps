@@ -1,0 +1,21 @@
+-- Settings as a uikit app: one window, a sidebar of panes beside the pane
+-- that is open.
+
+from uikit import *
+from model import SystemSettings
+from SettingsWindow import SettingsWindow
+
+export class SettingsApp extends App
+  settings: SystemSettings
+
+  fn init()
+    self.super()
+    self.settings = SystemSettings()
+  end
+
+  fn body() -> Scene
+    return WindowGroup(title: "Settings", width: 720, height: 480) do
+      SettingsWindow(self.settings)
+    end
+  end
+end

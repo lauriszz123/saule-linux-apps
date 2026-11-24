@@ -1,0 +1,42 @@
+-- What Settings shows when it can't reach the window manager: why, and a
+-- way to try again.
+
+from uikit import *
+from model import SystemSettings
+from theme import Style
+from views import PaneTitle
+
+export class OfflinePane extends View
+  settings: SystemSettings
+  retried: fn() -> nil
+
+  fn init(settings: SystemSettings, retried: fn() -> nil, key: string? = nil)
+    self.super(key)
+    self.settings = settings
+    self.retried = retried
+  end
+
+  fn body(context: BuildContext) -> View
+    local settings = self.settings
+    local retried = self.retried
+    local explain = "Settings changes the window manager it runs in."
+    local cause = Text(settings.problem).font(12.0).foregroundStyle(
+      Style.dimText
+    )
+    local retry = fn()
+      settings.connect()
+      retried()
+    end
+
+    return VStack(alignment: StackAlignment.Leading, spacing: 12.0) do
+      PaneTitle("Not connected")
+      Text(explain).font(13.0).foregroundStyle(Style.text)
+      Text("There isn't one here to talk to.").font(13.0).foregroundStyle(
+        Style.text
+      )
+      show(cause)
+      Button(label: "Try Again", onPressed: retry)
+      Spacer()
+    end
+  end
+end

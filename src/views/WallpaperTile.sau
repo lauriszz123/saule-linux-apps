@@ -1,0 +1,70 @@
+-- One wallpaper to pick: a small picture of it, drawn the way the window
+-- manager draws the real one (a wash corner to corner, a glow up on the
+-- right), ringed in `accent` when it is the one in use.
+
+import shine
+from uikit import *
+from "wmapi" import Preset
+from theme import Style
+
+export class WallpaperTile extends View
+  preset: Preset
+  chosen: boolean
+  accent: Color
+
+  fn init(preset: Preset, chosen: boolean, accent: Color, key: string? = nil)
+    self.super(key)
+    self.preset = preset
+    self.chosen = chosen
+    self.accent = accent
+  end
+
+  fn layout(el: Element, constraints: Constraints) -> Size
+    return constraints.biggest()
+  end
+
+  fn paint(el: Element, x: float, y: float) -> nil
+    local w = el.size.width
+    local h = el.size.height
+    local c = self.preset.colours
+    local r = 6.0
+
+    local wash = WallpaperTile.stops(
+      {
+        Style.colour(c[1]),
+        Style.colour(c[2]),
+        Style.colour(c[3]),
+      }
+    )
+    Graphics.setLinearGradient(x, y, x + w, y + h, wash)
+    Graphics.rectangle("fill", x, y, w, h, r)
+
+    local glow = Style.colour(c[4])
+    local fade = WallpaperTile.stops({glow, glow.withAlpha(0.0)})
+    Graphics.setRadialGradient(x + w * 0.85, y + h * 0.15, w * 0.55, fade)
+    Graphics.rectangle("fill", x, y, w, h, r)
+    Graphics.clearGradient()
+
+    if self.chosen then
+      self.accent.apply()
+      Graphics.setLineWidth(2.0)
+      Graphics.rectangle("line", x - 2.0, y - 2.0, w + 4.0, h + 4.0, r + 2.0)
+    end
+  end
+
+  -- Gradient stops the way Shine takes them: for each colour, where it
+  -- sits from 0 to 1, then its red, green, blue and alpha.
+  static fn stops(colours: table<Color>) -> table<float>
+    local stops: table<float> = {}
+    local last = (#colours - 1) as float
+    for i = 1, #colours do
+      local colour = colours[i]
+      Table.insert(stops, ((i - 1) as float) / last)
+      Table.insert(stops, colour.r)
+      Table.insert(stops, colour.g)
+      Table.insert(stops, colour.b)
+      Table.insert(stops, colour.a)
+    end
+    return stops
+  end
+end

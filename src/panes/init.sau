@@ -1,0 +1,7 @@
+-- panes — one view per pane of Settings.
+
+export from WindowsPane import *
+export from AppearancePane import *
+export from WallpaperPane import *
+export from AboutPane import *
+export from OfflinePane import *

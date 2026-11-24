@@ -1,0 +1,36 @@
+-- One accent to pick: a dot of its colour, ringed when it is the one in
+-- use, as in the Mac's Appearance settings.
+
+import shine
+from uikit import *
+from theme import Style
+
+export class Swatch extends View
+  colour: Color
+  chosen: boolean
+
+  fn init(colour: Color, chosen: boolean, key: string? = nil)
+    self.super(key)
+    self.colour = colour
+    self.chosen = chosen
+  end
+
+  fn layout(el: Element, constraints: Constraints) -> Size
+    return constraints.biggest()
+  end
+
+  fn paint(el: Element, x: float, y: float) -> nil
+    local s = Math.min(el.size.width, el.size.height)
+    local cx = x + s / 2.0
+    local cy = y + s / 2.0
+
+    self.colour.apply()
+    Graphics.circle("fill", cx, cy, s * 0.36)
+
+    if self.chosen then
+      Style.text.apply()
+      Graphics.setLineWidth(1.5)
+      Graphics.circle("line", cx, cy, s * 0.48)
+    end
+  end
+end

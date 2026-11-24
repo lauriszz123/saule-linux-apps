@@ -1,0 +1,22 @@
+--[[
+Settings: the macOS-style place to change how Saule looks and behaves.
+
+  saule run .     inside the window manager (saule-wm), which it talks to
+
+It changes the window manager through the `saule.wm` service (saule-wm's
+`wmapi` package). Run anywhere else, it says it can't reach one.
+
+    model   the settings and the connection to the window manager
+    theme   colours and sizes
+    views   the window, its sidebar and the pieces panes are made of
+    panes   one view per pane: Windows, Appearance, Wallpaper, About
+]]
+
+from uikit import App
+from SettingsApp import SettingsApp
+
+class Main
+  static fn main()
+    SettingsApp().run()
+  end
+end

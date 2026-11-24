@@ -1,0 +1,45 @@
+-- Settings' colours and sizes, in one place. Dark, like the Mac's System
+-- Settings in dark mode; the accent is the system's, from the window
+-- manager, so picking one in Appearance recolours Settings too.
+
+from uikit import Color, TextStyle, ThemeData
+from "wmapi" import Rgba
+
+export class Style
+  static window: Color = Color(0.15, 0.15, 0.17)
+  static sidebar: Color = Color(0.11, 0.11, 0.13)
+
+  -- A group of rows: a rounded card a little lighter than the window, with
+  -- hairlines between its rows.
+  static card: Color = Color(1.0, 1.0, 1.0, 0.06)
+  static hairline: Color = Color(1.0, 1.0, 1.0, 0.09)
+
+  static text: Color = Color(0.95, 0.95, 0.97)
+  static dimText: Color = Color(1.0, 1.0, 1.0, 0.55)
+
+  -- A segmented control's track, and its chosen segment.
+  static track: Color = Color(1.0, 1.0, 1.0, 0.08)
+  static segment: Color = Color(1.0, 1.0, 1.0, 0.22)
+
+  static sidebarWidth: float = 180.0
+  static padding: float = 20.0
+  static rowHeight: float = 40.0
+  static cardRadius: float = 10.0
+
+  static fn colour(c: Rgba) -> Color
+    return Color(c.r, c.g, c.b, c.a)
+  end
+
+  -- uikit's controls (sliders, toggles) in these colours, lit by `accent`.
+  static fn theme(accent: Color) -> ThemeData
+    return ThemeData(
+      background: Style.window,
+      surface: Style.card,
+      border: Style.hairline,
+      text: Style.text,
+      textMuted: Style.dimText,
+      primary: accent,
+      body: TextStyle(Style.text, 13.0)
+    )
+  end
+end

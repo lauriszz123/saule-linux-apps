@@ -1,0 +1,58 @@
+-- The accent colour, and how round windows' corners are.
+
+from uikit import *
+from "wmapi" import Presets
+from model import SystemSettings
+from theme import Style
+from views import Group, PaneTitle, Row, SliderControl, Swatch
+
+export class AppearancePane extends View
+  settings: SystemSettings
+  changed: fn() -> nil
+
+  fn init(settings: SystemSettings, changed: fn() -> nil, key: string? = nil)
+    self.super(key)
+    self.settings = settings
+    self.changed = changed
+  end
+
+  fn body(context: BuildContext) -> View
+    local options = self.settings.options
+    local changed = self.changed
+
+    local swatches: table<View> = {}
+    for preset in Presets.accents do
+      local colour = Style.colour(preset.colours[1])
+      local swatch = Swatch(colour, preset.name == options.accent)
+      local pick = fn()
+        options.accent = preset.name
+        changed()
+      end
+      local sized = swatch.frame(width: 22.0, height: 22.0)
+      Table.insert(swatches, GestureArea(child: sized, onTap: pick))
+    end
+    local current = Presets.find(Presets.accents, options.accent)
+
+    local corners = SliderControl(
+      options.corners,
+      0.0,
+      16.0,
+      1.0,
+      " px",
+      fn(v: float)
+        options.corners = v
+        changed()
+      end
+    )
+
+    return VStack(alignment: StackAlignment.Fill, spacing: 18.0) do
+      PaneTitle("Appearance")
+      Group(
+        "Accent colour",
+        {Row(current.title, HStack(spacing: 4.0, children: swatches))}
+      )
+      Group("Windows", {Row("Corner roundness", corners)})
+      Spacer()
+    end
+  end
+end
