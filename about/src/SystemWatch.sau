@@ -1,0 +1,48 @@
+-- What the system is like now, asked of the window manager (its `saule.wm`
+-- service) when the window opens and again whenever `refresh` is called:
+-- the memory in use and the room on the disk change while the window is
+-- looked at.
+--
+-- With no window manager to ask — About run on its own — nothing is known,
+-- which shows as dashes, and each `refresh` tries again.
+
+from "wmapi" import SystemInfo, WmService, WmSettings
+from log import Logger
+
+export class SystemWatch
+  static local log: Logger = Logger("about")
+
+  -- How often the window asks again, in seconds.
+  static every: float = 1.0
+
+  info: SystemInfo
+
+  local wm: WmSettings?
+  local warned: boolean
+
+  fn init()
+    self.info = SystemInfo()
+    self.wm = nil
+    self.warned = false
+    self.refresh()
+  end
+
+  -- Ask again. What was known stays when the window manager can't be
+  -- reached.
+  fn refresh() -> nil
+    try
+      if self.wm == nil then
+        self.wm = WmSettings.connect(WmService.name)
+      end
+      self.info = self.wm!.about()
+      self.warned = false
+    catch e: string
+      self.wm = nil
+      -- Said once, not every second.
+      if not self.warned then
+        SystemWatch.log.warn("window manager unreachable", {reason: e})
+        self.warned = true
+      end
+    end
+  end
+end

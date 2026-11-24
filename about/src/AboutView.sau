@@ -9,20 +9,26 @@
 --        Computer  HP Mini 210-1001SA
 --       Processor  Intel Atom N450 @ 1.66GHz
 --        Graphics  Intel GMA 3150
---          Memory  1 GB
+--          Memory  412 MB used of 1 GB
+--         Storage  250.06 GB hard disk ·
+--                  247.47 GB available
 --          Kernel  6.18.64-saule
 --         Display  1024 × 600
 --  Window manager  0.1.0
 --
 -- Every value is what the window manager read from the system (see its
--- `SettingsService.about`); one it couldn't find is a dash.
+-- `SettingsService.about`); one it couldn't find is a dash. It is asked
+-- again every second while the window is open, so the memory in use and
+-- the room on the disk are what they are now, not what they were when the
+-- window opened.
 
 from uikit import *
 from "wmapi" import SystemInfo
 from SunMark import SunMark
+from SystemWatch import SystemWatch
 
 export class AboutView extends View
-  info: SystemInfo
+  watch: SystemWatch
 
   static background: Color = Color(0.15, 0.15, 0.17)
   static text: Color = Color(0.95, 0.95, 0.97)
@@ -32,28 +38,71 @@ export class AboutView extends View
   static names: float = 110.0
   static values: float = 150.0
 
-  fn init(info: SystemInfo, key: string? = nil)
+  fn init(watch: SystemWatch, key: string? = nil)
     self.super(key)
-    self.info = info
+    self.watch = watch
+  end
+
+  -- It has a tick to run: see `View.ticks`.
+  fn ticks() -> boolean
+    return true
+  end
+
+  -- Ask again every `SystemWatch.every` seconds, and build the window
+  -- again when what it says changed.
+  fn tick(el: Element, dt: float) -> nil
+    local bag: table = el.data.scratch
+    local waited = ((bag.waited as float?) ?? 0.0) + dt
+    if waited < SystemWatch.every then
+      bag.waited = waited
+      return
+    end
+    bag.waited = 0.0
+
+    local before = AboutView.said(self.watch.info)
+    self.watch.refresh()
+    if AboutView.said(self.watch.info) != before then
+      el.markNeedsBuild()
+    end
+  end
+
+  -- Everything the window says of `info`, to tell when it changed.
+  static fn said(info: SystemInfo) -> string
+    local values: table<string> = {}
+    for fact in AboutView.facts(info) do
+      Table.insert(values, fact[2])
+    end
+    return info.saule .. "\n" .. String.join("\n", values)
+  end
+
+  -- The facts shown, in order: each a name and its value.
+  static fn facts(info: SystemInfo) -> table<table<string>>
+    return {
+      {"Computer", info.machine},
+      {"Processor", AboutView.processor(info)},
+      {"Graphics", info.graphics},
+      {"Memory", AboutView.memory(info)},
+      {"Storage", info.storage},
+      {"Kernel", info.kernel},
+      {"Display", AboutView.display(info)},
+      {"Window manager", info.wm},
+    }
   end
 
   fn body(context: BuildContext) -> View
-    local info = self.info
+    local info = self.watch.info
     local text = AboutView.text
     local dim = AboutView.dimText
 
     local version = "Version " .. AboutView.dash(info.saule)
     local name = Text("Saule Linux").font(20.0).foregroundStyle(text)
     local said = Text(version).font(11.0).foregroundStyle(dim)
-    local facts = VStack(alignment: StackAlignment.Center, spacing: 5.0) do
-      AboutView.fact("Computer", info.machine)
-      AboutView.fact("Processor", AboutView.processor(info))
-      AboutView.fact("Graphics", info.graphics)
-      AboutView.fact("Memory", AboutView.memory(info.memory))
-      AboutView.fact("Kernel", info.kernel)
-      AboutView.fact("Display", AboutView.display(info))
-      AboutView.fact("Window manager", info.wm)
+    local rows: table<View> = {}
+    for fact in AboutView.facts(info) do
+      Table.insert(rows, AboutView.fact(fact[1], fact[2]))
     end
+    local center = StackAlignment.Center
+    local facts = VStack(alignment: center, spacing: 5.0, children: rows)
 
     local column = VStack(alignment: StackAlignment.Center, spacing: 4.0) do
       Spacer()
@@ -93,10 +142,25 @@ export class AboutView extends View
     return name
   end
 
-  -- Memory in kB as a Mac says it: whole gigabytes, or megabytes below
-  -- one. The kernel keeps a little for itself, so 1 GB reads as a bit
-  -- less: 0.95 still counts as 1 GB.
-  static fn memory(kb: integer) -> string
+  -- Memory: what is in use now, of all there is: "412 MB used of 1 GB".
+  -- Only all there is when what is in use isn't known.
+  static fn memory(info: SystemInfo) -> string
+    local all = AboutView.memorySize(info.memory)
+    if all == "" or info.memoryUsed <= 0 then
+      return all
+    end
+    local mb = (info.memoryUsed as float) / 1024.0
+    local used = String.format("%.0f MB", mb)
+    if mb >= 1000.0 then
+      used = String.format("%.1f GB", mb / 1024.0)
+    end
+    return used .. " used of " .. all
+  end
+
+  -- All the memory, in kB, as a Mac says it: whole gigabytes, or megabytes
+  -- below one. The kernel keeps a little for itself, so 1 GB reads as a
+  -- bit less: 0.95 still counts as 1 GB.
+  static fn memorySize(kb: integer) -> string
     if kb <= 0 then
       return ""
     end

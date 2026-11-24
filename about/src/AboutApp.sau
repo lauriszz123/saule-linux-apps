@@ -3,33 +3,21 @@
 -- shows About This Mac.
 
 from uikit import *
-from "wmapi" import SystemInfo, WmService, WmSettings
 from AboutView import AboutView
-from log import Logger
+from SystemWatch import SystemWatch
 
 export class AboutApp extends App
-  info: SystemInfo
+  watch: SystemWatch
 
   fn init()
     self.super()
-    self.info = AboutApp.ask()
+    self.watch = SystemWatch()
   end
 
   fn body() -> Scene
     local title = "About This System"
-    return WindowGroup(title: title, width: 300, height: 370, resizable: false) do
-      AboutView(self.info)
-    end
-  end
-
-  -- What the window manager knows about the system; nothing known when it
-  -- can't be reached (run on its own), which shows as dashes.
-  static fn ask() -> SystemInfo
-    try
-      return WmSettings.connect(WmService.name).about()
-    catch e: string
-      Logger("about").warn("window manager unreachable", {reason: e})
-      return SystemInfo()
+    return WindowGroup(title: title, width: 300, height: 400, resizable: false) do
+      AboutView(self.watch)
     end
   end
 end
