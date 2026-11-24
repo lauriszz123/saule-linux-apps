@@ -22,6 +22,7 @@ export class Sidebar extends View
     Pane.Wallpaper,
     Pane.Keyboard,
     Pane.Mouse,
+    Pane.Storage,
     Pane.About,
   }
 

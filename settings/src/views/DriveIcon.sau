@@ -1,0 +1,156 @@
+-- A drive's picture, for the Storage pane, after the Mac's: a hard disk is
+-- a silver box seen from above, its platter's outline and label on it; a
+-- USB drive a stick; the memory a system runs from a memory module.
+
+import shine
+from uikit import *
+
+export class DriveIcon extends View
+  -- "hdd", "ssd", "usb", "memory" or "disk", as `StorageVolume.kind`.
+  kind: string
+
+  fn init(kind: string, key: string? = nil)
+    self.super(key)
+    self.kind = kind
+  end
+
+  fn layout(el: Element, constraints: Constraints) -> Size
+    return constraints.biggest()
+  end
+
+  fn paint(el: Element, x: float, y: float) -> nil
+    local s = Math.min(el.size.width, el.size.height)
+    match self.kind
+      case "usb" then DriveIcon.stick(x, y, s)
+      case "memory" then DriveIcon.module(x, y, s)
+      case "ssd" then DriveIcon.ssd(x, y, s)
+      case _ then DriveIcon.disk(x, y, s)
+    end
+  end
+
+  -- A 2.5-inch hard disk: an aluminium case, the platter's round cover,
+  -- the arm's, and the white label in the corner.
+  static fn disk(x: float, y: float, s: float) -> nil
+    local w = s * 0.7
+    local h = s * 0.92
+    local left = x + (s - w) / 2.0
+    local top = y + (s - h) / 2.0
+    Graphics.setColor(0.62, 0.64, 0.67)
+    Graphics.rectangle("fill", left, top, w, h, s * 0.06)
+    Graphics.setColor(0.80, 0.81, 0.83)
+    Graphics.rectangle(
+      "fill",
+      left + 1.0,
+      top + 1.0,
+      w - 2.0,
+      h - 2.0,
+      s * 0.055
+    )
+
+    -- The platter, ringed, and its spindle.
+    local cx = left + w * 0.5
+    local cy = top + h * 0.38
+    local r = w * 0.4
+    Graphics.setColor(0.70, 0.71, 0.74)
+    Graphics.circle("fill", cx, cy, r)
+    Graphics.setColor(0.86, 0.87, 0.89)
+    Graphics.circle("fill", cx, cy, r * 0.9)
+    Graphics.setColor(0.66, 0.67, 0.70)
+    Graphics.circle("fill", cx, cy, r * 0.22)
+
+    -- The arm's cover, from the bottom right corner.
+    Graphics.setColor(0.72, 0.73, 0.76)
+    Graphics.circle("fill", left + w * 0.78, top + h * 0.8, w * 0.12)
+
+    -- The label.
+    Graphics.setColor(0.97, 0.97, 0.98)
+    Graphics.rectangle(
+      "fill",
+      left + w * 0.1,
+      top + h * 0.72,
+      w * 0.46,
+      h * 0.2,
+      s * 0.02
+    )
+    Graphics.setColor(0.55, 0.57, 0.62)
+    for i = 0, 2 do
+      local ly = top + h * (0.76 + 0.05 * (i as float))
+      Graphics.rectangle(
+        "fill",
+        left + w * 0.14,
+        ly,
+        w * (0.32 - 0.08 * (i as float)),
+        1.0
+      )
+    end
+  end
+
+  -- An SSD: a dark slim case with a light band across.
+  static fn ssd(x: float, y: float, s: float) -> nil
+    local w = s * 0.7
+    local h = s * 0.92
+    local left = x + (s - w) / 2.0
+    local top = y + (s - h) / 2.0
+    Graphics.setColor(0.22, 0.23, 0.26)
+    Graphics.rectangle("fill", left, top, w, h, s * 0.06)
+    Graphics.setColor(0.85, 0.86, 0.88)
+    Graphics.rectangle("fill", left, top + h * 0.38, w, h * 0.22)
+    Graphics.setColor(0.25, 0.52, 0.96)
+    Graphics.rectangle(
+      "fill",
+      left + w * 0.12,
+      top + h * 0.45,
+      w * 0.3,
+      h * 0.08,
+      s * 0.02
+    )
+  end
+
+  -- A USB stick: its body, and the plug's metal end with two holes.
+  static fn stick(x: float, y: float, s: float) -> nil
+    local w = s * 0.42
+    local left = x + (s - w) / 2.0
+    local plug = s * 0.26
+    local top = y + s * 0.06
+    Graphics.setColor(0.80, 0.81, 0.83)
+    Graphics.rectangle("fill", left + w * 0.15, top, w * 0.7, plug, s * 0.02)
+    Graphics.setColor(0.45, 0.46, 0.50)
+    Graphics.rectangle(
+      "fill",
+      left + w * 0.3,
+      top + plug * 0.3,
+      w * 0.12,
+      plug * 0.25
+    )
+    Graphics.rectangle(
+      "fill",
+      left + w * 0.58,
+      top + plug * 0.3,
+      w * 0.12,
+      plug * 0.25
+    )
+    Graphics.setColor(0.25, 0.52, 0.96)
+    Graphics.rectangle("fill", left, top + plug, w, s * 0.62, s * 0.08)
+  end
+
+  -- A memory module: a green board, its black chips, its gold contacts.
+  static fn module(x: float, y: float, s: float) -> nil
+    local w = s * 0.9
+    local h = s * 0.4
+    local left = x + (s - w) / 2.0
+    local top = y + (s - h) / 2.0
+    Graphics.setColor(0.13, 0.48, 0.30)
+    Graphics.rectangle("fill", left, top, w, h, s * 0.03)
+    Graphics.setColor(0.12, 0.12, 0.14)
+    for i = 0, 3 do
+      local cx = left + w * (0.07 + 0.225 * (i as float))
+      Graphics.rectangle("fill", cx, top + h * 0.18, w * 0.17, h * 0.5, 1.0)
+    end
+    Graphics.setColor(0.86, 0.70, 0.30)
+    local pins = 14
+    for i = 0, pins - 1 do
+      local px = left + w * 0.04 + (i as float) * (w * 0.92 / (pins as float))
+      Graphics.rectangle("fill", px, top + h * 0.8, w * 0.04, h * 0.16)
+    end
+  end
+end

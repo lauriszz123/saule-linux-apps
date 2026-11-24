@@ -6,6 +6,7 @@ export enum Pane
   Wallpaper,
   Keyboard,
   Mouse,
+  Storage,
   About
 
   fn title() -> string
@@ -15,6 +16,7 @@ export enum Pane
       case Pane.Wallpaper then "Wallpaper"
       case Pane.Keyboard then "Keyboard"
       case Pane.Mouse then "Mouse"
+      case Pane.Storage then "Storage"
       case Pane.About then "About"
     end
   end

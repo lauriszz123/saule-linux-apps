@@ -30,6 +30,7 @@ export class PaneIcon extends View
       case Pane.Wallpaper then PaneIcon.wallpaper(x, y, s)
       case Pane.Keyboard then PaneIcon.keyboard(x, y, s)
       case Pane.Mouse then PaneIcon.mouse(x, y, s)
+      case Pane.Storage then PaneIcon.storage(x, y, s)
       case Pane.About then PaneIcon.about(x, y, s)
     end
   end
@@ -41,6 +42,7 @@ export class PaneIcon extends View
       case Pane.Wallpaper then Color(0.16, 0.66, 0.84)
       case Pane.Keyboard then Color(0.42, 0.40, 0.78)
       case Pane.Mouse then Color(0.20, 0.62, 0.52)
+      case Pane.Storage then Color(0.55, 0.56, 0.60)
       case Pane.About then Color(0.52, 0.53, 0.58)
     end
   end
@@ -144,6 +146,20 @@ export class PaneIcon extends View
       h * 0.18,
       wheel / 2.0
     )
+  end
+
+  -- A drive, as the Mac's Storage icon: a white box seen from the front,
+  -- its light a dot at the right.
+  static fn storage(x: float, y: float, s: float) -> nil
+    local left = x + s * 0.18
+    local top = y + s * 0.34
+    local w = s * 0.64
+    local h = s * 0.32
+    Graphics.rectangle("fill", left, top, w, h, s * 0.07)
+    PaneIcon.colour(Pane.Storage).apply()
+    local line = Math.max(s * 0.04, 1.0)
+    Graphics.rectangle("fill", left, top + h * 0.55, w, line)
+    Graphics.circle("fill", left + w - s * 0.1, top + h * 0.78, s * 0.035)
   end
 
   -- An "i".

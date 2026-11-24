@@ -5,7 +5,8 @@
 -- reached — Settings run on its own, or the window manager gone — this
 -- says why, and changing anything does nothing until `connect` succeeds.
 
-from "wmapi" import KeyActions, SystemInfo, WmOptions, WmService
+from "wmapi" import KeyActions, StorageReport, SystemInfo, WmOptions
+from "wmapi" import WmService
 from "wmapi" import WmSettings
 from log import Logger
 
@@ -14,6 +15,9 @@ export class SystemSettings
 
   options: WmOptions
   info: SystemInfo
+
+  -- The disks and what is on them, asked for when the Storage pane opens.
+  storage: StorageReport
 
   -- Every shortcut as the window manager has it now, by action, and
   -- "mod" (see `WmSettings.keys`).
@@ -30,6 +34,7 @@ export class SystemSettings
   fn init()
     self.options = WmOptions()
     self.info = SystemInfo()
+    self.storage = StorageReport()
     self.keys = {}
     self.recording = false
     self.problem = ""
@@ -102,6 +107,19 @@ export class SystemSettings
     end
     try
       self.info = wm!.about()
+    catch e: string
+      self.lose(e)
+    end
+  end
+
+  -- Ask again what is on the disks: the Storage pane shows it fresh.
+  fn refreshStorage() -> nil
+    local wm = self.wm
+    if wm == nil then
+      return
+    end
+    try
+      self.storage = wm!.storage()
     catch e: string
       self.lose(e)
     end

@@ -1,0 +1,61 @@
+-- How full a volume is, as the Mac's Storage pane shows it: a bar of
+-- rounded segments side by side, one colour for each kind of thing on it,
+-- a small gap between, and what is free left as the empty track.
+--
+-- A kind that takes up almost nothing still gets a sliver, so the bar
+-- shows everything its legend names.
+
+import shine
+from uikit import *
+
+export class StorageBar extends View
+  -- Each segment's bytes and colour, in order, and the volume's size.
+  sizes: table<integer>
+  colours: table<Color>
+  total: integer
+
+  static gap: float = 2.0
+  static sliver: float = 4.0
+
+  fn init(
+    sizes: table<integer>,
+    colours: table<Color>,
+    total: integer,
+    key: string? = nil
+  )
+    self.super(key)
+    self.sizes = sizes
+    self.colours = colours
+    self.total = total
+  end
+
+  fn layout(el: Element, constraints: Constraints) -> Size
+    return constraints.biggest()
+  end
+
+  fn paint(el: Element, x: float, y: float) -> nil
+    local w = el.size.width
+    local h = el.size.height
+    local r = Math.min(h * 0.3, 5.0)
+    Graphics.setColor(1.0, 1.0, 1.0, 0.10)
+    Graphics.rectangle("fill", x, y, w, h, r)
+    if self.total <= 0 then
+      return
+    end
+
+    local at = x
+    for i = 1, #self.sizes do
+      local bytes = self.sizes[i]
+      if bytes > 0 then
+        local share = (bytes as float) / (self.total as float) * w
+        local width = Math.max(share - StorageBar.gap, StorageBar.sliver)
+        width = Math.min(width, x + w - at)
+        if width > 0.0 then
+          self.colours[i].apply()
+          Graphics.rectangle("fill", at, y, width, h, Math.min(r, width / 2.0))
+          at += width + StorageBar.gap
+        end
+      end
+    end
+  end
+end
