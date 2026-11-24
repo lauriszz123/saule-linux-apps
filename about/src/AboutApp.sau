@@ -1,8 +1,11 @@
--- About This System as a uikit app: one small window.
+-- About This System as a uikit app: one small window that can't be resized,
+-- so the window manager floats it in the middle of the screen, as a Mac
+-- shows About This Mac.
 
 from uikit import *
 from "wmapi" import SystemInfo, WmService, WmSettings
 from AboutView import AboutView
+from log import Logger
 
 export class AboutApp extends App
   info: SystemInfo
@@ -13,7 +16,8 @@ export class AboutApp extends App
   end
 
   fn body() -> Scene
-    return WindowGroup(title: "About This System", width: 300, height: 420) do
+    local title = "About This System"
+    return WindowGroup(title: title, width: 300, height: 370, resizable: false) do
       AboutView(self.info)
     end
   end
@@ -24,6 +28,7 @@ export class AboutApp extends App
     try
       return WmSettings.connect(WmService.name).about()
     catch e: string
+      Logger("about").warn("window manager unreachable", {reason: e})
       return SystemInfo()
     end
   end

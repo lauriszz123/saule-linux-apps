@@ -39,6 +39,8 @@ export class AboutPane extends View
       Group(
         "This system",
         {
+          AboutPane.fact("Computer", info.machine),
+          AboutPane.fact("Graphics", info.graphics),
           AboutPane.fact("Window manager", info.wm),
           AboutPane.fact("Kernel", info.kernel),
           AboutPane.fact("Memory", memory),

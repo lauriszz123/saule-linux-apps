@@ -1,16 +1,21 @@
--- The window's one view, laid out as About This Mac:
+-- The window's one view, laid out as About This Mac: everything on the
+-- middle line, the names of the facts right-aligned against it and their
+-- values left-aligned from it.
 --
---           ( ☀ )
---        Saule Linux
---       Version 26.31
+--              ( ☀ )
+--           Saule Linux
+--          Version 26.31
 --
---   Processor   Intel Atom N450 …
---   Memory      1 GB
---   Kernel      6.18.64-saule
---   Display     1024 × 600
---   Window manager    0.1.0
+--        Computer  HP Mini 210-1001SA
+--       Processor  Intel Atom N450 @ 1.66GHz
+--        Graphics  Intel GMA 3150
+--          Memory  1 GB
+--          Kernel  6.18.64-saule
+--         Display  1024 × 600
+--  Window manager  0.1.0
 --
--- A value the system couldn't give is a dash.
+-- Every value is what the window manager read from the system (see its
+-- `SettingsService.about`); one it couldn't find is a dash.
 
 from uikit import *
 from "wmapi" import SystemInfo
@@ -23,6 +28,10 @@ export class AboutView extends View
   static text: Color = Color(0.95, 0.95, 0.97)
   static dimText: Color = Color(1.0, 1.0, 1.0, 0.55)
 
+  -- How wide the facts' names and values are, either side of the middle.
+  static names: float = 110.0
+  static values: float = 150.0
+
   fn init(info: SystemInfo, key: string? = nil)
     self.super(key)
     self.info = info
@@ -34,54 +43,75 @@ export class AboutView extends View
     local dim = AboutView.dimText
 
     local version = "Version " .. AboutView.dash(info.saule)
-    local processor = info.processor
-    if info.cores > 1 then
-      processor = processor .. " (" .. info.cores .. " threads)"
-    end
-    local memory = ""
-    if info.memory > 0 then
-      local gb = (info.memory as float) / 1048576.0
-      memory = String.format("%.0f GB", Math.max(gb, 1.0))
-      if gb < 0.95 then
-        memory = String.format("%.0f MB", (info.memory as float) / 1024.0)
-      end
-    end
-    local display = ""
-    if info.screenWidth > 0 then
-      display = info.screenWidth .. " × " .. info.screenHeight
-    end
-
-    local name = Text("Saule Linux").font(22.0).foregroundStyle(text)
-    local said = Text(version).font(12.0).foregroundStyle(dim)
-    local facts = VStack(alignment: StackAlignment.Fill, spacing: 6.0) do
-      AboutView.fact("Processor", processor)
-      AboutView.fact("Memory", memory)
+    local name = Text("Saule Linux").font(20.0).foregroundStyle(text)
+    local said = Text(version).font(11.0).foregroundStyle(dim)
+    local facts = VStack(alignment: StackAlignment.Center, spacing: 5.0) do
+      AboutView.fact("Computer", info.machine)
+      AboutView.fact("Processor", AboutView.processor(info))
+      AboutView.fact("Graphics", info.graphics)
+      AboutView.fact("Memory", AboutView.memory(info.memory))
       AboutView.fact("Kernel", info.kernel)
-      AboutView.fact("Display", display)
+      AboutView.fact("Display", AboutView.display(info))
       AboutView.fact("Window manager", info.wm)
     end
 
-    local column = VStack(alignment: StackAlignment.Center, spacing: 6.0) do
-      Spacer().frame(height: 18.0)
-      SunMark().frame(width: 96.0, height: 96.0)
-      Spacer().frame(height: 8.0)
+    local column = VStack(alignment: StackAlignment.Center, spacing: 4.0) do
+      Spacer()
+      SunMark().frame(width: 72.0, height: 72.0)
+      Spacer().frame(height: 10.0)
       show(name)
       show(said)
-      Spacer().frame(height: 14.0)
-      facts.padding(insets: EdgeInsets.symmetric(horizontal: 20.0))
+      Spacer().frame(height: 16.0)
+      show(facts)
       Spacer()
     end
     return column.background(AboutView.background)
   end
 
-  -- One fact: its name on the left, dim, and its value beside it.
+  -- One fact: its name right-aligned against the middle, its value from
+  -- the middle on, dim, on two lines at most.
   static fn fact(label: string, value: string) -> View
-    local name = Text(label).font(12.0).foregroundStyle(AboutView.text)
-    local said = Text(AboutView.dash(value)).font(12.0)
-    return HStack(alignment: StackAlignment.Leading, spacing: 10.0) do
-      name.frame(width: 96.0)
-      said.foregroundStyle(AboutView.dimText).lineLimit(2).expanded()
+    local name = Text(label).font(11.0).foregroundStyle(AboutView.text)
+    local said = Text(AboutView.dash(value)).font(11.0).lineLimit(2)
+    local right = name.multilineTextAlignment(TextAlign.Right)
+    return HStack(alignment: StackAlignment.Leading, spacing: 8.0) do
+      right.frame(width: AboutView.names)
+      said.foregroundStyle(AboutView.dimText).frame(width: AboutView.values)
     end
+  end
+
+  -- The processor as a Mac names its chip: without the "(R)", "(TM)" and
+  -- "CPU" a kernel reports, and how many threads it runs at once.
+  static fn processor(info: SystemInfo) -> string
+    local name = info.processor
+    for noise in {"(R)", "(TM)", " CPU"} do
+      name = String.replace(name, noise, "")
+    end
+    if name != "" and info.cores > 1 then
+      name = name .. ", " .. info.cores .. " threads"
+    end
+    return name
+  end
+
+  -- Memory in kB as a Mac says it: whole gigabytes, or megabytes below
+  -- one. The kernel keeps a little for itself, so 1 GB reads as a bit
+  -- less: 0.95 still counts as 1 GB.
+  static fn memory(kb: integer) -> string
+    if kb <= 0 then
+      return ""
+    end
+    local gb = (kb as float) / 1048576.0
+    if gb < 0.95 then
+      return String.format("%.0f MB", (kb as float) / 1024.0)
+    end
+    return String.format("%.0f GB", Math.max(gb, 1.0))
+  end
+
+  static fn display(info: SystemInfo) -> string
+    if info.screenWidth <= 0 then
+      return ""
+    end
+    return info.screenWidth .. " × " .. info.screenHeight
   end
 
   static fn dash(value: string) -> string
