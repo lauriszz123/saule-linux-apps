@@ -23,6 +23,7 @@ from panes import WallpaperPane
 from panes import WindowsPane
 from panes import DateTimePane, DisplaysPane, GeneralPane, NetworkPane
 from panes import BluetoothPane, PasswordPane, SoundPane, TrackpadPane
+from panes import UpdatePane
 from panes import WifiPane
 
 export class SettingsWindow extends View
@@ -177,7 +178,7 @@ export class SettingsWindow extends View
       case Pane.General then
         pane = GeneralPane(settings, refresh, openPane)
       case Pane.Displays then
-        pane = DisplaysPane(settings, refresh)
+        pane = DisplaysPane(settings, refresh, changed)
       case Pane.Appearance then
         pane = AppearancePane(settings, changed)
       case Pane.Windows then
@@ -196,6 +197,8 @@ export class SettingsWindow extends View
         pane = StoragePane(settings)
       case Pane.DateTime then
         pane = DateTimePane(settings, refresh)
+      case Pane.Update then
+        pane = UpdatePane(settings, refresh)
       case Pane.About then nil
     end
     return pane

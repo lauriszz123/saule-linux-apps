@@ -73,7 +73,7 @@ export class GeneralPane extends View
     end
 
     local links: table<View> = {}
-    for pane in {Pane.About, Pane.Storage, Pane.DateTime} do
+    for pane in {Pane.About, Pane.Update, Pane.Storage, Pane.DateTime} do
       if Sidebar.has(pane, machine) then
         Table.insert(links, LinkRow(pane, fn()
           onOpen(pane)

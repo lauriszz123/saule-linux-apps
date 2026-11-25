@@ -15,5 +15,6 @@ export from WifiPane import *
 export from BluetoothPane import *
 export from GeneralPane import *
 export from DateTimePane import *
+export from UpdatePane import *
 export from PasswordPane import *
 export from TrackpadPane import *

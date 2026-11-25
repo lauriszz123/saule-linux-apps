@@ -193,6 +193,9 @@ export class SystemSettings
       tostring(machine.bluetoothScanning),
       machine.passkey,
       tostring(machine.clockSynced),
+      machine.version,
+      machine.updateState,
+      machine.updateDetail,
     }
     for output in machine.outputs do
       Table.insert(parts, output.name .. tostring(output.chosen))

@@ -41,6 +41,7 @@ export class PaneIcon extends View
       case Pane.Password then PaneIcon.password(x, y, s)
       case Pane.Trackpad then PaneIcon.trackpad(x, y, s)
       case Pane.DateTime then PaneIcon.dateTime(x, y, s)
+      case Pane.Update then PaneIcon.update(x, y, s)
     end
   end
 
@@ -62,6 +63,7 @@ export class PaneIcon extends View
       case Pane.Password then Color(0.90, 0.36, 0.34)
       case Pane.Trackpad then Color(0.52, 0.53, 0.58)
       case Pane.DateTime then Color(0.22, 0.56, 0.95)
+      case Pane.Update then Color(0.52, 0.53, 0.58)
     end
   end
 
@@ -205,6 +207,15 @@ export class PaneIcon extends View
     PaneIcon.colour(Pane.Trackpad).apply()
     local line = Math.max(s * 0.04, 1.0)
     Graphics.rectangle("fill", left, top + s * 0.34, s * 0.64, line)
+  end
+
+  -- An arrow down into a tray: something new to take in.
+  static fn update(x: float, y: float, s: float) -> nil
+    Graphics.setLineWidth(Math.max(s * 0.08, 1.2))
+    Graphics.line(x + s * 0.5, y + s * 0.2, x + s * 0.5, y + s * 0.58)
+    Graphics.line(x + s * 0.33, y + s * 0.42, x + s * 0.5, y + s * 0.6)
+    Graphics.line(x + s * 0.67, y + s * 0.42, x + s * 0.5, y + s * 0.6)
+    Graphics.line(x + s * 0.22, y + s * 0.78, x + s * 0.78, y + s * 0.78)
   end
 
   -- A clock at ten past ten.

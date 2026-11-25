@@ -6,16 +6,24 @@ from uikit import *
 from "wmapi" import WmSettings
 from model import SystemSettings
 from theme import Style
-from views import Group, PaneTitle, Row, Said, SliderControl
+from views import Group, PaneTitle, Row, Said, Segmented, SliderControl
 
 export class DisplaysPane extends View
   settings: SystemSettings
   refresh: Action
+  -- Send the window manager's own settings: the size is one of them.
+  changed: Action
 
-  fn init(settings: SystemSettings, refresh: Action, key: string? = nil)
+  fn init(
+    settings: SystemSettings,
+    refresh: Action,
+    changed: Action,
+    key: string? = nil
+  )
     self.super(key)
     self.settings = settings
     self.refresh = refresh
+    self.changed = changed
   end
 
   fn body(context: BuildContext) -> View
@@ -34,6 +42,30 @@ export class DisplaysPane extends View
     end
 
     local items: table<View> = {PaneTitle("Displays"), Group("Display", rows)}
+
+    -- How large everything is drawn: on Saule Linux's own screen. Nested
+    -- in another desktop, that desktop decides.
+    if machine.managed and settings.info.host == "saule" then
+      local options = settings.options
+      local chosen = String.format("%.2f", options.scale)
+      local changed = self.changed
+      local size = Segmented(
+        {"0.00", "1.00", "1.25", "1.50", "1.75", "2.00"},
+        {"Auto", "100%", "125%", "150%", "175%", "200%"},
+        chosen,
+        fn(choice: string)
+          options.scale = (choice as float?) ?? 0.0
+          changed()
+        end
+      )
+      Table.insert(items, Group("Size", {Row("Size of everything", size)}))
+      Table.insert(
+        items,
+        Said.note(
+          "Automatic goes by how many pixels the screen has: larger on a laptop's 1080 lines than on a netbook's 600, and twice the size on a 4K screen."
+        )
+      )
+    end
     if machine.backlight then
       local brightness = SliderControl(
         machine.brightness as float,

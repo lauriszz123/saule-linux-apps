@@ -1,0 +1,173 @@
+-- Software Update: which version of the system is running, and updating
+-- it from a file.
+--
+-- An update is one file, `saule-linux-<version>.update`, made where the
+-- system is built (saule-linux's `make update`). Put on a USB drive, or
+-- in Downloads, it is found here; installing it replaces the system's
+-- kernel and files on the disk, and the computer starts the new one the
+-- next time it starts. Nothing kept (documents, settings) is touched.
+--
+-- Only an update signed by the system's maker is taken: the system
+-- checks before it writes anything, and says so when one isn't.
+
+from uikit import *
+from "wmapi" import WmSettings
+from model import SystemSettings
+from theme import Style
+from views import Group, PaneTitle, Row, RowButton, Said
+
+export class UpdatePane extends View
+  settings: SystemSettings
+  refresh: Action
+
+  -- How often update files are looked for again, in seconds: a drive
+  -- may just have been plugged in.
+  static every: float = 2.0
+
+  fn init(settings: SystemSettings, refresh: Action, key: string? = nil)
+    self.super(key)
+    self.settings = settings
+    self.refresh = refresh
+  end
+
+  -- It has a tick to run: see `View.ticks`.
+  fn ticks() -> boolean
+    return true
+  end
+
+  fn tick(el: Element, dt: float) -> nil
+    local bag: table = el.data.scratch
+    local waited = ((bag.waited as float?) ?? UpdatePane.every) + dt
+    if waited < UpdatePane.every then
+      bag.waited = waited
+      return
+    end
+    bag.waited = 0.0
+    local found = String.join("|", UpdatePane.files())
+    if found != (bag.found as string?) then
+      bag.found = found
+      el.markNeedsBuild()
+    end
+  end
+
+  -- The folders an update file is looked for in: each drive that is
+  -- plugged in, and Downloads.
+  static fn places() -> table<string>
+    local out: table<string> = {}
+    local media = "/run/media"
+    if Os.exists(media) then
+      for name in Os.list(media) do
+        Table.insert(out, media .. "/" .. name)
+      end
+    end
+    local home = Os.getenv("HOME") ?? ""
+    if home != "" then
+      Table.insert(out, home .. "/Downloads")
+    end
+    return out
+  end
+
+  -- Every update file there is to be found, by its whole path.
+  static fn files() -> table<string>
+    local out: table<string> = {}
+    for folder in UpdatePane.places() do
+      if Os.exists(folder) then
+        for name in Os.list(folder) do
+          if String.ends(name, ".update") then
+            Table.insert(out, folder .. "/" .. name)
+          end
+        end
+      end
+    end
+    return out
+  end
+
+  -- The version an update file says it is, from its second line; "" for
+  -- a file that isn't one. What it says is checked when it is installed.
+  static fn versionOf(path: string) -> string
+    local file = Io.open(path, IoMode.Read)
+    if file == nil then
+      return ""
+    end
+    local first = String.trim(file!.read("l") ?? "")
+    local second = String.trim(file!.read("l") ?? "")
+    file!.close()
+    if first != "SAULE-UPDATE 1" or not String.starts(second, "version ") then
+      return ""
+    end
+    return String.sub(second, 9)
+  end
+
+  -- Where a file is, said shortly: the drive's name, or "Downloads".
+  static fn whereIs(path: string) -> string
+    local parts = String.split(path, "/")
+    if String.starts(path, "/run/media/") and #parts >= 4 then
+      return "on " .. parts[4]
+    end
+    return "in Downloads"
+  end
+
+  fn body(context: BuildContext) -> View
+    local settings = self.settings
+    local machine = settings.machine
+    local refresh = self.refresh
+
+    local items: table<View> = {
+      PaneTitle("Software Update"),
+      Group("This Computer", {Row("Saule Linux", Said(machine.version))}),
+    }
+
+    local installing = machine.updateState == "installing"
+    if installing then
+      Table.insert(
+        items,
+        Said.note("Installing the update… Don't turn the computer off.")
+      )
+    elseif machine.updateState == "done" then
+      local restart = RowButton("Restart…", fn()
+        settings.tell(fn(wm: WmSettings)
+          wm.askRestart()
+        end)
+      end)
+      Table.insert(
+        items,
+        Group("Installed", {
+          Row("Version " .. machine.updateDetail .. " starts next time", restart),
+        })
+      )
+    elseif machine.updateState == "failed" then
+      Table.insert(items, Said.note(machine.updateDetail, warning: true))
+    end
+
+    local rows: table<View> = {}
+    for path in UpdatePane.files() do
+      local version = UpdatePane.versionOf(path)
+      if version != "" then
+        local said = "Version " .. version .. " · " .. UpdatePane.whereIs(path)
+        local control: View = Said("Installed")
+        if version == machine.version then
+          control = Said("This version")
+        elseif not installing then
+          control = RowButton("Install", fn()
+            settings.tell(fn(wm: WmSettings)
+              wm.installUpdate(path)
+            end)
+            refresh()
+          end)
+        end
+        Table.insert(rows, Row(said, control))
+      end
+    end
+    if #rows == 0 then
+      Table.insert(rows, Row("No update file was found", Said("")))
+    end
+    Table.insert(items, Group("Updates", rows))
+    Table.insert(
+      items,
+      Said.note(
+        "An update is a file ending in “.update”, on a USB drive or in Downloads. Documents and settings are kept."
+      )
+    )
+    return Said.pane(items)
+  end
+end

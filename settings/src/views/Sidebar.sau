@@ -59,6 +59,7 @@ export class Sidebar extends View
     Table.insert(out, Pane.About)
     Table.insert(out, Pane.Storage)
     Table.insert(out, Pane.DateTime)
+    Table.insert(out, Pane.Update)
     return out
   end
 
@@ -78,6 +79,7 @@ export class Sidebar extends View
         not known or machine.has("mouse") or machine.has("tablet")
       case Pane.Trackpad then machine.has("touchpad")
       case Pane.DateTime then machine.managed and machine.kept
+      case Pane.Update then machine.managed and machine.version != ""
       case _ then true
     end
   end

@@ -21,7 +21,8 @@ export enum Pane
   Trackpad,
   About,
   Storage,
-  DateTime
+  DateTime,
+  Update
 
   fn title() -> string
     return match self
@@ -41,6 +42,7 @@ export enum Pane
       case Pane.About then "About"
       case Pane.Storage then "Storage"
       case Pane.DateTime then "Date & Time"
+      case Pane.Update then "Software Update"
     end
   end
 
@@ -53,6 +55,8 @@ export enum Pane
       case Pane.Storage then
         return Pane.General
       case Pane.DateTime then
+        return Pane.General
+      case Pane.Update then
         return Pane.General
       case _ then
         return nil
