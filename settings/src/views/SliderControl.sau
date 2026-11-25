@@ -16,7 +16,7 @@ export class SliderControl extends View
   -- whole number, "%.2f" two places.
   format: string
 
-  onChanged: fn(float) -> nil
+  onChanged: ValueChanged<float>
 
   fn init(
     value: float,
@@ -24,7 +24,7 @@ export class SliderControl extends View
     max: float,
     step: float,
     unit: string,
-    onChanged: fn(float) -> nil,
+    onChanged: ValueChanged<float>,
     format: string = "%.0f",
     key: string? = nil
   )

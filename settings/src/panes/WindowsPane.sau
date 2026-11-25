@@ -7,9 +7,9 @@ from views import Group, PaneTitle, Row, Segmented, SliderControl
 
 export class WindowsPane extends View
   settings: SystemSettings
-  changed: fn() -> nil
+  changed: Action
 
-  fn init(settings: SystemSettings, changed: fn() -> nil, key: string? = nil)
+  fn init(settings: SystemSettings, changed: Action, key: string? = nil)
     self.super(key)
     self.settings = settings
     self.changed = changed

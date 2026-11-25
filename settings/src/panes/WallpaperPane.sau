@@ -10,13 +10,13 @@ from views import Flow, PaneTitle, WallpaperTile
 
 export class WallpaperPane extends View
   settings: SystemSettings
-  changed: fn() -> nil
+  changed: Action
 
   -- How big each picture is.
   static tileWidth: float = 128.0
   static tileHeight: float = 80.0
 
-  fn init(settings: SystemSettings, changed: fn() -> nil, key: string? = nil)
+  fn init(settings: SystemSettings, changed: Action, key: string? = nil)
     self.super(key)
     self.settings = settings
     self.changed = changed

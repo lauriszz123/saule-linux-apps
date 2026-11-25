@@ -8,9 +8,9 @@ from views import PaneTitle
 
 export class OfflinePane extends View
   settings: SystemSettings
-  retried: fn() -> nil
+  retried: Action
 
-  fn init(settings: SystemSettings, retried: fn() -> nil, key: string? = nil)
+  fn init(settings: SystemSettings, retried: Action, key: string? = nil)
     self.super(key)
     self.settings = settings
     self.retried = retried

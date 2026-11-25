@@ -87,7 +87,7 @@ export class SettingsWindow extends View
   end
 
   -- The view of the pane `open`.
-  local fn pane(open: Pane, changed: fn() -> nil) -> View
+  local fn pane(open: Pane, changed: Action) -> View
     local settings = self.settings
     local pane: View = AboutPane(settings)
     match open

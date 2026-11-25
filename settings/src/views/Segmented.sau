@@ -8,13 +8,13 @@ export class Segmented extends View
   choices: table<string>
   titles: table<string>
   value: string
-  onChanged: fn(string) -> nil
+  onChanged: ValueChanged<string>
 
   fn init(
     choices: table<string>,
     titles: table<string>,
     value: string,
-    onChanged: fn(string) -> nil,
+    onChanged: ValueChanged<string>,
     key: string? = nil
   )
     self.super(key)

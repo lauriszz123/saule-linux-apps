@@ -9,12 +9,12 @@ from PaneIcon import PaneIcon
 export class SidebarRow extends View
   pane: Pane
   selected: boolean
-  onOpen: fn() -> nil
+  onOpen: Action
 
   fn init(
     pane: Pane,
     selected: boolean,
-    onOpen: fn() -> nil,
+    onOpen: Action,
     key: string? = nil
   )
     self.super(key)

@@ -15,9 +15,9 @@ from views import Group, PaneTitle, Row, Segmented, ShortcutField
 
 export class KeyboardPane extends View
   settings: SystemSettings
-  changed: fn() -> nil
+  changed: Action
 
-  fn init(settings: SystemSettings, changed: fn() -> nil, key: string? = nil)
+  fn init(settings: SystemSettings, changed: Action, key: string? = nil)
     self.super(key)
     self.settings = settings
     self.changed = changed
@@ -136,7 +136,7 @@ export class KeyboardPane extends View
     name: string,
     e: KeyEvent,
     use: fn(string, string) -> nil,
-    stop: fn() -> nil,
+    stop: Action,
     note: Binding
   ) -> boolean
     -- The modifiers alone are on their way to a shortcut.
@@ -239,7 +239,7 @@ export class KeyboardPane extends View
 
   -- Under the groups: how to change a shortcut, and the way back to the
   -- defaults.
-  static fn footer(restore: fn() -> nil) -> View
+  static fn footer(restore: Action) -> View
     local how = "Click a shortcut, then type the new keys."
     local help = how .. " Escape stops; Backspace puts it back."
     local text = Text(help).font(12.0).foregroundStyle(Style.dimText)

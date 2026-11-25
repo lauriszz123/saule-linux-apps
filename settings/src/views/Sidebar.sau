@@ -7,9 +7,9 @@ from SidebarRow import SidebarRow
 
 export class Sidebar extends View
   open: Pane
-  onOpen: fn(Pane) -> nil
+  onOpen: ValueChanged<Pane>
 
-  fn init(open: Pane, onOpen: fn(Pane) -> nil, key: string? = nil)
+  fn init(open: Pane, onOpen: ValueChanged<Pane>, key: string? = nil)
     self.super(key)
     self.open = open
     self.onOpen = onOpen

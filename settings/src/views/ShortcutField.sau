@@ -18,13 +18,13 @@ export class ShortcutField extends View
   -- Why the keys just typed can't be the shortcut, or "".
   problem: string
 
-  onPress: fn() -> nil
+  onPress: Action
 
   fn init(
     keys: table<string>,
     recording: boolean,
     changed: boolean,
-    onPress: fn() -> nil,
+    onPress: Action,
     problem: string = "",
     key: string? = nil
   )
