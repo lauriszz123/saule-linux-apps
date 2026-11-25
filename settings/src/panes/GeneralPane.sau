@@ -1,0 +1,107 @@
+-- The computer itself: its name, and the way to what else is said of it
+-- (About, Storage, Date & Time), as a Mac's General pane leads to its.
+--
+-- The name is how the computer is known on a network, so it is kept as
+-- letters, digits and hyphens; what will be kept is shown while another
+-- is typed, and Enter keeps it.
+
+from uikit import *
+from "wmapi" import WmSettings
+from model import Pane, SystemSettings
+from theme import Style
+from views import Field, Group, LinkRow, PaneTitle, Row, Said, Sidebar
+
+export class GeneralPane extends View
+  settings: SystemSettings
+  refresh: Action
+  onOpen: ValueChanged<Pane>
+
+  fn init(
+    settings: SystemSettings,
+    refresh: Action,
+    onOpen: ValueChanged<Pane>,
+    key: string? = nil
+  )
+    self.super(key)
+    self.settings = settings
+    self.refresh = refresh
+    self.onOpen = onOpen
+  end
+
+  fn body(context: BuildContext) -> View
+    local settings = self.settings
+    local machine = settings.machine
+    local refresh = self.refresh
+    local onOpen = self.onOpen
+    -- What is being typed as the name, or "" while nothing is: then the
+    -- field shows the name there is.
+    local typed = context.state("name", "")
+    local editing = context.state("editing", 0)
+
+    local items: table<View> = {PaneTitle("General")}
+
+    if machine.managed and machine.kept then
+      local shown = machine.name
+      if editing.int(0) == 1 then
+        shown = typed.text("")
+      end
+      local keep = fn(text: string)
+        settings.tell(fn(wm: WmSettings)
+          wm.setComputerName(text)
+        end)
+        editing.set(0)
+        refresh()
+      end
+      local field = Field(shown, "Name", fn(text: string)
+        typed.set(text)
+        editing.set(1)
+      end, keep)
+      Table.insert(items, Group("This Computer", {Row("Name", field)}))
+
+      local kept = GeneralPane.nameFrom(typed.text(""))
+      if editing.int(0) == 1 and kept == "" then
+        Table.insert(
+          items,
+          Said.note("A name needs a letter or a digit in it.", warning: true)
+        )
+      elseif editing.int(0) == 1 and kept != machine.name then
+        Table.insert(
+          items,
+          Said.note("Press Enter to name this computer " .. kept .. ".")
+        )
+      end
+    end
+
+    local links: table<View> = {}
+    for pane in {Pane.About, Pane.Storage, Pane.DateTime} do
+      if Sidebar.has(pane, machine) then
+        Table.insert(links, LinkRow(pane, fn()
+          onOpen(pane)
+        end))
+      end
+    end
+    Table.insert(items, Group("", links))
+    return Said.pane(items)
+  end
+
+  -- `typed` as the window manager will keep it: letters, digits and
+  -- hyphens, anything else turned into a hyphen.
+  static fn nameFrom(typed: string) -> string
+    local out = ""
+    local text = String.trim(typed)
+    for i = 1, String.len(text) do
+      local code = String.byte(text, i)!
+      local letter = (code >= 65 and code <= 90) or (code >= 97 and code <= 122)
+      local digit = code >= 48 and code <= 57
+      if letter or digit then
+        out = out .. String.sub(text, i, i)
+      elseif out != "" and not String.ends(out, "-") then
+        out = out .. "-"
+      end
+    end
+    while String.ends(out, "-") do
+      out = String.sub(out, 1, String.len(out) - 1)
+    end
+    return String.sub(out, 1, 63)
+  end
+end

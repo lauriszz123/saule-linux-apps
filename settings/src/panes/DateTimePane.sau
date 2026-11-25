@@ -1,0 +1,121 @@
+-- The time zone the clock goes by. A zone is named after its largest
+-- city, so finding one is typing a city: "vil" finds Vilnius. Clicking a
+-- city moves the clock there at once.
+
+from uikit import *
+from "wmapi" import WmSettings
+from model import SystemSettings
+from theme import Style
+from views import Field, Group, PaneTitle, Row, RowButton, Said
+
+export class DateTimePane extends View
+  settings: SystemSettings
+  refresh: Action
+
+  -- How many cities a search lists.
+  static rows: integer = 8
+
+  fn init(settings: SystemSettings, refresh: Action, key: string? = nil)
+    self.super(key)
+    self.settings = settings
+    self.refresh = refresh
+  end
+
+  fn body(context: BuildContext) -> View
+    local settings = self.settings
+    local machine = settings.machine
+    local refresh = self.refresh
+    local query = context.state("query", "")
+
+    local now = DateTimePane.city(machine.timeZone)
+    local typed = fn(text: string)
+      query.set(text)
+    end
+    local search = Field(query.text(""), "Search for a city", typed)
+    -- The clock is set from the network by itself; when, and the way
+    -- to have it asked again now.
+    local synced = "Not yet: it is asked when the computer is on a network"
+    if machine.clockSynced > 0 then
+      local ago = Math.max(Os.time() - machine.clockSynced, 0)
+      synced = DateTimePane.ago(ago)
+    end
+    local again = RowButton("Set Now", fn()
+      settings.tell(fn(wm: WmSettings)
+        wm.syncClock()
+      end)
+      refresh()
+    end)
+    local items: table<View> = {
+      PaneTitle("Date & Time"),
+      Group("Clock", {
+        Row("Set from the network", Said(synced)),
+        Row("Ask a time server", again),
+      }),
+      Group("Time Zone", {Row("Time zone", Said(now)), Row("Change", search)}),
+    }
+
+    local wanted = String.lower(String.trim(query.text("")))
+    if wanted != "" then
+      local found: table<View> = {}
+      for zone in settings.zones() do
+        local city = String.lower(zone[2])
+        if #found < DateTimePane.rows and String.contains(city, wanted) then
+          local id = zone[1]
+          local pick = fn()
+            settings.tell(fn(wm: WmSettings)
+              wm.setTimeZone(id)
+            end)
+            query.set("")
+            refresh()
+          end
+          Table.insert(found, DateTimePane.row(zone[2], zone[3], pick))
+        end
+      end
+      if #found == 0 then
+        Table.insert(
+          items,
+          Said.note("No city by that name. Try the largest one nearby.")
+        )
+      else
+        Table.insert(items, Group("Cities", found))
+      end
+    end
+    return Said.pane(items)
+  end
+
+  -- How long ago, said roughly.
+  static fn ago(seconds: integer) -> string
+    if seconds < 90 then
+      return "Just now"
+    end
+    if seconds < 5400 then
+      return tostring(Math.floor((seconds + 30) / 60)) .. " minutes ago"
+    end
+    if seconds < 129600 then
+      return tostring(Math.floor((seconds + 1800) / 3600)) .. " hours ago"
+    end
+    return tostring(Math.floor(seconds / 86400)) .. " days ago"
+  end
+
+  -- "Europe/Vilnius" as "Vilnius, Europe".
+  static fn city(zone: string) -> string
+    local parts = String.split(zone, "/")
+    local city = String.replace(parts[#parts], "_", " ")
+    if #parts == 1 then
+      return city
+    end
+    return city .. ", " .. parts[1]
+  end
+
+  static fn row(city: string, region: string, pick: Action) -> View
+    local name = Text(city).font(13.0).foregroundStyle(Style.text)
+    local part = Text(region).font(12.0).foregroundStyle(Style.dimText)
+    local row = HStack(alignment: StackAlignment.Center, spacing: 10.0) do
+      show(name)
+      Spacer()
+      show(part)
+    end
+    local inset = EdgeInsets.symmetric(horizontal: 14.0, vertical: 10.0)
+    return GestureArea(child: row.padding(insets: inset), onTap: pick)
+  end
+end

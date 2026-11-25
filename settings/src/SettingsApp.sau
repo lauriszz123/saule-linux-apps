@@ -3,6 +3,7 @@
 -- on that pane.
 
 from uikit import *
+from "wmapi" import WmApp
 from model import SystemSettings
 from SettingsWindow import SettingsWindow
 
@@ -12,6 +13,11 @@ export class SettingsApp extends App
   fn init()
     self.super()
     self.settings = SystemSettings()
+    WmApp.describe(
+      "Settings",
+      Project.version,
+      "The computer's settings, and the window manager's."
+    )
   end
 
   fn body() -> Scene

@@ -3,6 +3,7 @@
 -- shows About This Mac.
 
 from uikit import *
+from "wmapi" import WmApp
 from AboutView import AboutView
 from SystemWatch import SystemWatch
 
@@ -12,6 +13,7 @@ export class AboutApp extends App
   fn init()
     self.super()
     self.watch = SystemWatch()
+    WmApp.describe("About This System", Project.version, "What this computer is.")
   end
 
   fn body() -> Scene

@@ -1,0 +1,61 @@
+-- The screen: how many points it shows, what draws it, and how bright
+-- its backlight is on a computer that has one to set (a laptop; not a
+-- desktop's monitor, which has buttons of its own).
+
+from uikit import *
+from "wmapi" import WmSettings
+from model import SystemSettings
+from theme import Style
+from views import Group, PaneTitle, Row, Said, SliderControl
+
+export class DisplaysPane extends View
+  settings: SystemSettings
+  refresh: Action
+
+  fn init(settings: SystemSettings, refresh: Action, key: string? = nil)
+    self.super(key)
+    self.settings = settings
+    self.refresh = refresh
+  end
+
+  fn body(context: BuildContext) -> View
+    local settings = self.settings
+    local machine = settings.machine
+    local info = settings.info
+    local refresh = self.refresh
+
+    local rows: table<View> = {}
+    if info.screenWidth > 0 then
+      local size = info.screenWidth .. " × " .. info.screenHeight
+      Table.insert(rows, Row("Resolution", Said(size)))
+    end
+    if info.graphics != "" then
+      Table.insert(rows, Row("Graphics", Said(info.graphics)))
+    end
+
+    local items: table<View> = {PaneTitle("Displays"), Group("Display", rows)}
+    if machine.backlight then
+      local brightness = SliderControl(
+        machine.brightness as float,
+        0.0,
+        100.0,
+        1.0,
+        "%",
+        fn(v: float)
+          settings.tell(fn(wm: WmSettings)
+            wm.setBrightness(v as integer)
+          end)
+          refresh()
+        end
+      )
+      Table.insert(items, Group("Brightness", {Row("Brightness", brightness)}))
+      Table.insert(
+        items,
+        Said.note(
+          "The keys with a sun on them change the same brightness, where the keyboard has them."
+        )
+      )
+    end
+    return Said.pane(items)
+  end
+end

@@ -1,0 +1,138 @@
+-- Bluetooth: the radio, the devices paired with the computer, and the
+-- ones found near it. "Look for Devices" searches for a while; a device
+-- to be paired has to be in its own pairing mode (a button held, usually)
+-- to be found. A keyboard being paired shows digits here to type on it.
+--
+-- What does the work is BlueZ, started by the system when the computer
+-- has a radio. Mice and keyboards are what it is for here: sound over
+-- Bluetooth needs a sound server the system doesn't have.
+
+from uikit import *
+from "wmapi" import BluetoothDevice, WmSettings
+from model import SystemSettings
+from theme import Style
+from views import Group, PaneTitle, Row, RowButton, Said
+
+export class BluetoothPane extends View
+  settings: SystemSettings
+  refresh: Action
+
+  fn init(settings: SystemSettings, refresh: Action, key: string? = nil)
+    self.super(key)
+    self.settings = settings
+    self.refresh = refresh
+  end
+
+  fn body(context: BuildContext) -> View
+    local settings = self.settings
+    local machine = settings.machine
+    local refresh = self.refresh
+    local ask = fn(action: string, address: string) -> Action
+      return fn()
+        settings.tell(fn(wm: WmSettings)
+          wm.bluetooth(action, address)
+        end)
+        refresh()
+      end
+    end
+
+    local radio = Toggle(
+      value: machine.bluetooth == "on",
+      onChanged: fn(on: boolean)
+        if on then
+          ask("on", "")()
+        else
+          ask("off", "")()
+        end
+      end
+    )
+    local items: table<View> = {
+      PaneTitle("Bluetooth"),
+      Group("Bluetooth", {Row("Bluetooth", radio)}),
+    }
+    if machine.bluetooth != "on" then
+      return Said.pane(items)
+    end
+
+    if machine.passkey != "" then
+      Table.insert(
+        items,
+        Said.note(
+          "To pair the keyboard, type " .. machine.passkey .. " on it and press Enter.",
+          warning: true
+        )
+      )
+    end
+
+    local paired: table<View> = {}
+    local found: table<View> = {}
+    for device in machine.bluetoothDevices do
+      if device.paired then
+        Table.insert(paired, BluetoothPane.paired(device, ask))
+      else
+        Table.insert(
+          found,
+          Row(BluetoothPane.name(device), RowButton("Pair", ask("pair", device.address)))
+        )
+      end
+    end
+    if #paired > 0 then
+      Table.insert(items, Group("My Devices", paired))
+    end
+
+    local searching = "Look for Devices"
+    if machine.bluetoothScanning then
+      searching = "Looking…"
+    end
+    if #found == 0 then
+      local said = "None found yet."
+      if machine.bluetoothScanning then
+        said = "Looking for devices…"
+      end
+      Table.insert(found, Row(said, Said("")))
+    end
+    Table.insert(items, Group("Nearby Devices", found))
+    local look = Button(label: searching, onPressed: ask("scan", ""))
+    local foot = HStack(alignment: StackAlignment.Center) do
+      Spacer()
+      show(look)
+    end
+    Table.insert(items, foot)
+    Table.insert(
+      items,
+      Said.note(
+        "Put a mouse or keyboard in its pairing mode first, so it can be found."
+      )
+    )
+    return Said.pane(items)
+  end
+
+  -- A device's name, or its address when it gives none.
+  static fn name(device: BluetoothDevice) -> string
+    if String.trim(device.name) == "" then
+      return device.address
+    end
+    return device.name
+  end
+
+  -- A paired device: connected or not, and the two things to do with it.
+  static fn paired(device: BluetoothDevice, ask: fn(string, string) -> Action) -> View
+    local buttons = HStack(
+      alignment: StackAlignment.Center,
+      sizing: StackSize.Fit,
+      spacing: 6.0
+    ) do
+      if device.connected then
+        RowButton("Disconnect", ask("disconnect", device.address))
+      else
+        RowButton("Connect", ask("connect", device.address))
+      end
+      RowButton("Forget", ask("forget", device.address))
+    end
+    local state = "Not connected"
+    if device.connected then
+      state = "Connected"
+    end
+    return Row(BluetoothPane.name(device) .. " · " .. state, buttons)
+  end
+end

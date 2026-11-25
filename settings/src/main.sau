@@ -9,7 +9,8 @@ It changes the window manager through the `saule.wm` service (saule-wm's
     model   the settings and the connection to the window manager
     theme   colours and sizes
     views   the window, its sidebar and the pieces panes are made of
-    panes   one view per pane: Windows, Appearance, Wallpaper, About
+    panes   one view per pane, listed in the sidebar by what the
+            computer has (see `views/Sidebar.sau`)
 ]]
 
 from uikit import App

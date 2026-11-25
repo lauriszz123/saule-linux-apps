@@ -1,47 +1,126 @@
--- The list of panes down the left, as on a Mac.
+-- The list of panes down the left, in groups with a gap between them, as
+-- on a Mac: what connects the computer first, then its sound, then the
+-- computer and how it looks, then who may use it, and last what it is
+-- typed on and pointed at with.
+--
+-- A pane is listed when the computer has what it is about: Wi-Fi with a
+-- radio, Sound with a sound card, Trackpad with a trackpad, Mouse while
+-- a mouse is plugged in. Keyboard is there unless the computer is known
+-- to have none: nearly every computer has one. Where nothing answers for
+-- the computer (the window manager nested in another desktop) only the
+-- panes about the window manager itself are listed.
 
 from uikit import *
+from "wmapi" import MachineInfo
 from model import Pane
 from theme import Style
 from SidebarRow import SidebarRow
 
 export class Sidebar extends View
   open: Pane
+  machine: MachineInfo
   onOpen: ValueChanged<Pane>
 
-  fn init(open: Pane, onOpen: ValueChanged<Pane>, key: string? = nil)
+  fn init(
+    open: Pane,
+    machine: MachineInfo,
+    onOpen: ValueChanged<Pane>,
+    key: string? = nil
+  )
     self.super(key)
     self.open = open
+    self.machine = machine
     self.onOpen = onOpen
   end
 
-  -- The panes, in the order they are listed.
-  static order: table<Pane> = {
-    Pane.Windows,
-    Pane.Appearance,
-    Pane.Wallpaper,
-    Pane.Keyboard,
-    Pane.Mouse,
-    Pane.Storage,
-    Pane.About,
+  -- The panes, grouped, in the order they are listed.
+  static groups: table<table<Pane>> = {
+    {Pane.Wifi, Pane.Bluetooth, Pane.Network},
+    {Pane.Sound},
+    {
+      Pane.General,
+      Pane.Displays,
+      Pane.Appearance,
+      Pane.Windows,
+      Pane.Wallpaper,
+    },
+    {Pane.Password},
+    {Pane.Keyboard, Pane.Mouse, Pane.Trackpad},
   }
 
-  fn body(context: BuildContext) -> View
-    local rows: table<View> = {}
-    for pane in Sidebar.order do
-      local open = fn()
-        self.onOpen(pane)
+  -- Every pane there is: the sidebar's, then those General opens.
+  static fn every() -> table<Pane>
+    local out: table<Pane> = {}
+    for group in Sidebar.groups do
+      for pane in group do
+        Table.insert(out, pane)
       end
-      Table.insert(rows, SidebarRow(pane, pane == self.open, open))
+    end
+    Table.insert(out, Pane.About)
+    Table.insert(out, Pane.Storage)
+    Table.insert(out, Pane.DateTime)
+    return out
+  end
+
+  -- Whether `pane` has anything to be about on this computer.
+  static fn has(pane: Pane, machine: MachineInfo) -> boolean
+    -- With no list of devices (nested), the panes that were always
+    -- there are.
+    local known = #machine.devices > 0
+    return match pane
+      case Pane.Wifi then machine.radio != "none"
+      case Pane.Bluetooth then machine.bluetooth != "none"
+      case Pane.Network then machine.wired or machine.radio != "none"
+      case Pane.Sound then machine.soundCard
+      case Pane.Password then machine.managed and machine.kept
+      case Pane.Keyboard then not known or machine.has("keyboard")
+      case Pane.Mouse then
+        not known or machine.has("mouse") or machine.has("tablet")
+      case Pane.Trackpad then machine.has("touchpad")
+      case Pane.DateTime then machine.managed and machine.kept
+      case _ then true
+    end
+  end
+
+  -- The groups as this computer has them: without the panes it has
+  -- nothing for, and without a group left empty.
+  static fn shown(machine: MachineInfo) -> table<table<Pane>>
+    local out: table<table<Pane>> = {}
+    for group in Sidebar.groups do
+      local kept: table<Pane> = {}
+      for pane in group do
+        if Sidebar.has(pane, machine) then
+          Table.insert(kept, pane)
+        end
+      end
+      if #kept > 0 then
+        Table.insert(out, kept)
+      end
+    end
+    return out
+  end
+
+  fn body(context: BuildContext) -> View
+    -- A pane General opens lights General.
+    local lit = self.open.parent() ?? self.open
+
+    local rows: table<View> = {}
+    for group in Sidebar.shown(self.machine) do
+      if #rows > 0 then
+        Table.insert(rows, Spacer().frame(height: 12.0))
+      end
+      for pane in group do
+        local open = fn()
+          self.onOpen(pane)
+        end
+        Table.insert(rows, SidebarRow(pane, pane == lit, open))
+      end
     end
 
     local fill = StackAlignment.Fill
     local list = VStack(alignment: fill, spacing: 2.0, children: rows)
-    local column = VStack(alignment: fill) do
-      show(list)
-      Spacer()
-    end
     local inset = EdgeInsets.symmetric(horizontal: 10.0, vertical: 14.0)
-    return column.padding(insets: inset).background(Style.sidebar)
+    local scroll = ScrollView(child: list.padding(insets: inset))
+    return scroll.background(Style.sidebar)
   end
 end

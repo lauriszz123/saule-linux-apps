@@ -3,6 +3,7 @@
 
 from uikit import *
 from model import SystemSettings
+from theme import Style
 from views import Group, PaneTitle, Row, Segmented, SliderControl
 
 export class WindowsPane extends View
@@ -49,8 +50,36 @@ export class WindowsPane extends View
       end
     )
 
+    local mode = "tiled"
+    if options.windowed then
+      mode = "windowed"
+    end
+    local arrange = Segmented(
+      {"tiled", "windowed"},
+      {"Tiled", "Windowed"},
+      mode,
+      fn(choice: string)
+        options.windowed = choice == "windowed"
+        changed()
+      end
+    )
+    local dock = Toggle(value: options.dock, onChanged: fn(on: boolean)
+      options.dock = on
+      changed()
+    end)
+    local keys = self.settings.shortcut("windowed")
+    local hint = "Tiled, windows share the screen; windowed, each has its own size and can be dragged over the others, as on a Mac."
+    if #keys > 0 then
+      hint = hint .. " " .. String.upper(String.join("+", keys)) .. " switches."
+    end
+
     return VStack(alignment: StackAlignment.Fill, spacing: 18.0) do
-      PaneTitle("Windows")
+      PaneTitle("Desktop & Windows")
+      Group(
+        "Windows",
+        {Row("Arrange windows", arrange), Row("Show the Dock", dock)}
+      )
+      WindowsPane.note(hint)
       Group(
         "Tiling",
         {
@@ -62,5 +91,11 @@ export class WindowsPane extends View
       Group("New windows", {Row("Open next to the focused one", where)})
       Spacer()
     end
+  end
+
+  -- Words under a group.
+  static fn note(words: string) -> View
+    local text = Text(words).font(11.0).foregroundStyle(Style.dimText)
+    return text.lineLimit(3).padding(insets: EdgeInsets.only(left: 4.0, right: 4.0))
   end
 end

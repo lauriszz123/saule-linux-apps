@@ -9,7 +9,7 @@
 from uikit import *
 from model import SystemSettings
 from theme import Style
-from views import Group, PaneTitle, Row, Segmented, SliderControl
+from views import Group, PaneTitle, Row, Said, Segmented, SliderControl
 
 export class MousePane extends View
   settings: SystemSettings
@@ -47,10 +47,14 @@ export class MousePane extends View
         changed()
       end
     )
-    local pointerRows: table<View> = {
-      Row("Pointer speed", speed),
-      Row("Primary button", primary),
-    }
+    -- A speed is a mouse's to have: a pointer that says where it is (a
+    -- tablet, a virtual machine's pointer) goes where it says.
+    local machine = settings.machine
+    local pointerRows: table<View> = {}
+    if #machine.devices == 0 or machine.has("mouse") then
+      Table.insert(pointerRows, Row("Pointer speed", speed))
+    end
+    Table.insert(pointerRows, Row("Primary button", primary))
     local host = MousePane.hostName(settings.info.host)
     if host != "" then
       local where = "Running in a window on " .. host
@@ -98,6 +102,13 @@ export class MousePane extends View
       Group("Scrolling", scrollRows),
       Group("Windows", windowRows),
     }
+    local mice = Said.devices(machine, "mouse", "mouse")
+    for row in Said.devices(machine, "tablet", "pointer") do
+      Table.insert(mice, row)
+    end
+    if #mice > 0 then
+      Table.insert(groups, Group("Devices", mice))
+    end
     local fill = StackAlignment.Fill
     local column = VStack(alignment: fill, spacing: 18.0, children: groups)
     local inset = EdgeInsets.only(right: 8.0)

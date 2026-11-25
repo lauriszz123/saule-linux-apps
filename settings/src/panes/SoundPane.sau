@@ -1,0 +1,110 @@
+-- The sound card's volume, and silence. The same volume the keys with a
+-- loudspeaker on them turn, and the bar's panel: whichever changes it,
+-- the others show it.
+
+from uikit import *
+from "wmapi" import WmSettings
+from model import SystemSettings
+from theme import Style
+from views import Group, PaneTitle, Row, RowButton, Said, SliderControl
+
+export class SoundPane extends View
+  settings: SystemSettings
+  refresh: Action
+
+  fn init(settings: SystemSettings, refresh: Action, key: string? = nil)
+    self.super(key)
+    self.settings = settings
+    self.refresh = refresh
+  end
+
+  fn body(context: BuildContext) -> View
+    local settings = self.settings
+    local machine = settings.machine
+    local refresh = self.refresh
+
+    local volume = SliderControl(
+      machine.volume as float,
+      0.0,
+      100.0,
+      1.0,
+      "%",
+      fn(v: float)
+        settings.tell(fn(wm: WmSettings)
+          wm.setVolume(v as integer)
+        end)
+        refresh()
+      end
+    )
+    local mute = Toggle(value: machine.muted, onChanged: fn(on: boolean)
+      settings.tell(fn(wm: WmSettings)
+        wm.setMuted(on)
+      end)
+      refresh()
+    end)
+
+    local outputRows: table<View> = {Row("Volume", volume), Row("Mute", mute)}
+    if machine.headphones == "in" then
+      Table.insert(outputRows, Row("Playing through", Said("Headphones")))
+    elseif machine.headphones == "out" then
+      Table.insert(outputRows, Row("Playing through", Said("Speakers")))
+    end
+    local items: table<View> = {
+      PaneTitle("Sound"),
+      Group("Output", outputRows),
+      Said.note(
+        "The keys with a loudspeaker on them turn the same volume, where the keyboard has them."
+      ),
+    }
+
+    -- More than one card to play through: which.
+    if #machine.outputs > 1 then
+      local cards: table<View> = {}
+      for output in machine.outputs do
+        local index = output.index
+        local control: View = Said("In use")
+        if not output.chosen then
+          control = RowButton("Use", fn()
+            settings.tell(fn(wm: WmSettings)
+              wm.setOutput(index)
+            end)
+            refresh()
+          end)
+        end
+        Table.insert(cards, Row(output.name, control))
+      end
+      Table.insert(items, Group("Play Sound Through", cards))
+      Table.insert(
+        items,
+        Said.note("Apps opened after another is chosen play through it.")
+      )
+    end
+
+    if machine.microphone then
+      local level = SliderControl(
+        machine.inputVolume as float,
+        0.0,
+        100.0,
+        1.0,
+        "%",
+        fn(v: float)
+          settings.tell(fn(wm: WmSettings)
+            wm.setInputVolume(v as integer)
+          end)
+          refresh()
+        end
+      )
+      local off = Toggle(value: machine.inputMuted, onChanged: fn(on: boolean)
+        settings.tell(fn(wm: WmSettings)
+          wm.setInputMuted(on)
+        end)
+        refresh()
+      end)
+      Table.insert(
+        items,
+        Group("Input", {Row("Microphone level", level), Row("Mute", off)})
+      )
+    end
+    return Said.pane(items)
+  end
+end

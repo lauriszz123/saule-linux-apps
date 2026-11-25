@@ -1,0 +1,55 @@
+-- A row's value that is only read: dim words at the right of the row.
+
+from uikit import *
+from "wmapi" import MachineInfo
+from theme import Style
+from Row import Row
+
+export class Said extends View
+  words: string
+
+  fn init(words: string, key: string? = nil)
+    self.super(key)
+    self.words = words
+  end
+
+  fn body(context: BuildContext) -> View
+    return Text(self.words).font(13.0).foregroundStyle(Style.dimText)
+  end
+
+  -- Words under a group, inset as a group's heading is: what a setting
+  -- means, or what just happened.
+  static fn note(words: string, warning: boolean = false) -> View
+    local colour = Style.dimText
+    if warning then
+      colour = Style.warning
+    end
+    local text = Text(words).font(11.0).foregroundStyle(colour).lineLimit(3)
+    return text.padding(insets: EdgeInsets.only(left: 4.0, right: 4.0))
+  end
+
+  -- The devices of `kind` as rows: where each is, and what it calls
+  -- itself.
+  static fn devices(machine: MachineInfo, kind: string, noun: string) -> table<View>
+    local rows: table<View> = {}
+    for device in machine.devices do
+      if device.kind == kind then
+        local place = "Connected " .. noun
+        if device.builtIn then
+          place = "Built-in " .. noun
+        end
+        Table.insert(rows, Row(place, Said(device.name)))
+      end
+    end
+    return rows
+  end
+
+  -- A pane's contents, one under another, scrolling when there are more
+  -- than fit.
+  static fn pane(items: table<View>) -> View
+    local fill = StackAlignment.Fill
+    local column = VStack(alignment: fill, spacing: 18.0, children: items)
+    local inset = EdgeInsets.only(right: 8.0, bottom: 12.0)
+    return ScrollView(child: column.padding(insets: inset))
+  end
+end

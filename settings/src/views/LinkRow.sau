@@ -1,0 +1,30 @@
+-- A row that leads somewhere: a pane's icon and name, and a chevron at
+-- the right, as the rows of a Mac's General pane. Clicking it goes.
+
+from uikit import *
+from model import Pane
+from theme import Style
+from PaneIcon import PaneIcon
+
+export class LinkRow extends View
+  pane: Pane
+  onOpen: Action
+
+  fn init(pane: Pane, onOpen: Action, key: string? = nil)
+    self.super(key)
+    self.pane = pane
+    self.onOpen = onOpen
+  end
+
+  fn body(context: BuildContext) -> View
+    local chevron = Text("›").font(16.0).foregroundStyle(Style.dimText)
+    local row = HStack(alignment: StackAlignment.Center, spacing: 10.0) do
+      PaneIcon(self.pane).frame(width: 22.0, height: 22.0)
+      Text(self.pane.title()).font(13.0).foregroundStyle(Style.text)
+      Spacer()
+      show(chevron)
+    end
+    local inset = EdgeInsets.symmetric(horizontal: 14.0, vertical: 9.0)
+    return GestureArea(child: row.padding(insets: inset), onTap: self.onOpen)
+  end
+end

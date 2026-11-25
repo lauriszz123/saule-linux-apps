@@ -1,0 +1,161 @@
+-- Wi-Fi: the radio, the network the computer is on, and the networks in
+-- range. Clicking one joins it; one that wants a password not yet kept
+-- opens a field for it under its name. A network joined before is
+-- joined again by itself, and can be forgotten here.
+
+from uikit import *
+from "wmapi" import WifiNetwork, WmSettings
+from model import SystemSettings
+from theme import Style
+from views import Field, Group, PaneTitle, Row, RowButton, Said
+from NetworkPane import NetworkPane
+
+export class WifiPane extends View
+  settings: SystemSettings
+  refresh: Action
+
+  fn init(settings: SystemSettings, refresh: Action, key: string? = nil)
+    self.super(key)
+    self.settings = settings
+    self.refresh = refresh
+  end
+
+  fn body(context: BuildContext) -> View
+    local settings = self.settings
+    local machine = settings.machine
+    local refresh = self.refresh
+    -- The network a password is being typed for, and what was typed.
+    local asking = context.state("asking", "")
+    local password = context.state("password", "")
+
+    local radio = Toggle(
+      value: machine.radio == "on",
+      onChanged: fn(on: boolean)
+        settings.tell(fn(wm: WmSettings)
+          wm.setRadio(on)
+        end)
+        refresh()
+      end
+    )
+    local status = "Off"
+    if machine.radio == "on" then
+      status = NetworkPane.wifi(machine.wifi, machine.wifiName)
+    end
+    local items: table<View> = {
+      PaneTitle("Wi-Fi"),
+      Group("Wi-Fi", {Row("Wi-Fi", radio), Row("Status", Said(status))}),
+    }
+    if machine.radio != "on" then
+      return Said.pane(items)
+    end
+
+    local join = fn(name: string, word: string)
+      settings.tell(fn(wm: WmSettings)
+        wm.joinNetwork(name, word)
+      end)
+      asking.set("")
+      password.set("")
+      refresh()
+    end
+
+    local rows: table<View> = {}
+    for network in machine.networks do
+      local name = network.name
+      local choose = fn()
+        if network.secured and not network.known then
+          asking.set(name)
+          password.set("")
+        else
+          join(name, "")
+        end
+      end
+      local joined = machine.wifi == "joined" and machine.wifiName == name
+      Table.insert(rows, WifiPane.row(network, joined, choose))
+
+      if asking.text("") == name then
+        local field = Field(
+          password.text(""),
+          "Password",
+          fn(text: string)
+            password.set(text)
+          end,
+          fn(text: string)
+            join(name, text)
+          end,
+          hidden: true,
+          wide: 180.0
+        )
+        local go = RowButton("Join", fn()
+          join(name, password.text(""))
+        end)
+        local both = HStack(
+          alignment: StackAlignment.Center,
+          sizing: StackSize.Fit,
+          spacing: 8.0
+        ) do
+          show(field)
+          show(go)
+        end
+        Table.insert(rows, Row("Password for " .. name, both))
+      elseif network.known then
+        local forget = RowButton("Forget", fn()
+          settings.tell(fn(wm: WmSettings)
+            wm.forgetNetwork(name)
+          end)
+          refresh()
+        end)
+        Table.insert(rows, Row("Joins " .. name .. " by itself", forget))
+      end
+    end
+    if #rows == 0 then
+      Table.insert(rows, Row("Looking for networks…", Said("")))
+    end
+    Table.insert(items, Group("Networks", rows))
+
+    local again = Button(label: "Look Again", onPressed: fn()
+      settings.tell(fn(wm: WmSettings)
+        wm.scanNetworks()
+      end)
+      refresh()
+    end)
+    local foot = HStack(alignment: StackAlignment.Center) do
+      Spacer()
+      show(again)
+    end
+    Table.insert(items, foot)
+    return Said.pane(items)
+  end
+
+  -- One network: its name, and at the right whether it is the one the
+  -- computer is on, whether it wants a password, and how strong it is.
+  static fn row(network: WifiNetwork, joined: boolean, choose: Action) -> View
+    local words: table<string> = {}
+    if joined then
+      Table.insert(words, "Connected")
+    end
+    if network.secured then
+      Table.insert(words, "Password")
+    end
+    Table.insert(words, WifiPane.strength(network.signal))
+
+    local name = Text(network.name).font(13.0).foregroundStyle(Style.text)
+    local said = Text(String.join(" · ", words)).font(12.0)
+    local row = HStack(alignment: StackAlignment.Center, spacing: 10.0) do
+      show(name)
+      Spacer()
+      said.foregroundStyle(Style.dimText)
+    end
+    local inset = EdgeInsets.symmetric(horizontal: 14.0, vertical: 11.0)
+    return GestureArea(child: row.padding(insets: inset), onTap: choose)
+  end
+
+  static fn strength(signal: integer) -> string
+    if signal >= 66 then
+      return "Strong"
+    end
+    if signal >= 33 then
+      return "Good"
+    end
+    return "Weak"
+  end
+end

@@ -32,6 +32,15 @@ export class PaneIcon extends View
       case Pane.Mouse then PaneIcon.mouse(x, y, s)
       case Pane.Storage then PaneIcon.storage(x, y, s)
       case Pane.About then PaneIcon.about(x, y, s)
+      case Pane.Wifi then PaneIcon.wifi(x, y, s)
+      case Pane.Bluetooth then PaneIcon.bluetooth(x, y, s)
+      case Pane.Network then PaneIcon.network(x, y, s)
+      case Pane.Sound then PaneIcon.sound(x, y, s)
+      case Pane.General then PaneIcon.general(x, y, s)
+      case Pane.Displays then PaneIcon.displays(x, y, s)
+      case Pane.Password then PaneIcon.password(x, y, s)
+      case Pane.Trackpad then PaneIcon.trackpad(x, y, s)
+      case Pane.DateTime then PaneIcon.dateTime(x, y, s)
     end
   end
 
@@ -44,7 +53,169 @@ export class PaneIcon extends View
       case Pane.Mouse then Color(0.20, 0.62, 0.52)
       case Pane.Storage then Color(0.55, 0.56, 0.60)
       case Pane.About then Color(0.52, 0.53, 0.58)
+      case Pane.Wifi then Color(0.20, 0.52, 0.96)
+      case Pane.Bluetooth then Color(0.20, 0.52, 0.96)
+      case Pane.Network then Color(0.20, 0.52, 0.96)
+      case Pane.Sound then Color(0.93, 0.30, 0.42)
+      case Pane.General then Color(0.52, 0.53, 0.58)
+      case Pane.Displays then Color(0.22, 0.56, 0.95)
+      case Pane.Password then Color(0.90, 0.36, 0.34)
+      case Pane.Trackpad then Color(0.52, 0.53, 0.58)
+      case Pane.DateTime then Color(0.22, 0.56, 0.95)
     end
+  end
+
+  -- The Bluetooth mark: an upright with two points to its right, each
+  -- crossed back to the other side.
+  static fn bluetooth(x: float, y: float, s: float) -> nil
+    local cx = x + s * 0.5
+    Graphics.setLineWidth(Math.max(s * 0.07, 1.2))
+    Graphics.line(cx, y + s * 0.2, cx, y + s * 0.8)
+    Graphics.line(cx, y + s * 0.2, cx + s * 0.16, y + s * 0.36)
+    Graphics.line(cx + s * 0.16, y + s * 0.36, cx - s * 0.16, y + s * 0.64)
+    Graphics.line(cx, y + s * 0.8, cx + s * 0.16, y + s * 0.64)
+    Graphics.line(cx + s * 0.16, y + s * 0.64, cx - s * 0.16, y + s * 0.36)
+  end
+
+  -- A dot and three arcs opening upward.
+  static fn wifi(x: float, y: float, s: float) -> nil
+    local cx = x + s * 0.5
+    local cy = y + s * 0.74
+    Graphics.circle("fill", cx, cy, s * 0.06)
+    Graphics.setLineWidth(Math.max(s * 0.07, 1.2))
+    for arc = 1, 3 do
+      Graphics.arc(
+        "line",
+        cx,
+        cy,
+        s * (0.06 + 0.16 * (arc as float)),
+        -Math.pi * 0.75,
+        -Math.pi * 0.25,
+        "open"
+      )
+    end
+  end
+
+  -- A globe: a circle, its equator and a meridian.
+  static fn network(x: float, y: float, s: float) -> nil
+    local cx = x + s * 0.5
+    local cy = y + s * 0.5
+    local r = s * 0.29
+    local line = Math.max(s * 0.06, 1.0)
+    Graphics.setLineWidth(line)
+    Graphics.circle("line", cx, cy, r)
+    Graphics.rectangle("fill", cx - r, cy - line / 2.0, r * 2.0, line)
+    Graphics.rectangle("fill", cx - line / 2.0, cy - r, line, r * 2.0)
+  end
+
+  -- A loudspeaker and two waves.
+  static fn sound(x: float, y: float, s: float) -> nil
+    local cy = y + s * 0.5
+    Graphics.rectangle("fill", x + s * 0.2, cy - s * 0.09, s * 0.14, s * 0.18)
+    Graphics.polygon(
+      "fill",
+      {
+        x + s * 0.3,
+        cy - s * 0.09,
+        x + s * 0.48,
+        cy - s * 0.24,
+        x + s * 0.48,
+        cy + s * 0.24,
+        x + s * 0.3,
+        cy + s * 0.09,
+      }
+    )
+    Graphics.setLineWidth(Math.max(s * 0.06, 1.0))
+    for wave = 1, 2 do
+      Graphics.arc(
+        "line",
+        x + s * 0.48,
+        cy,
+        s * (0.06 + 0.12 * (wave as float)),
+        -Math.pi * 0.25,
+        Math.pi * 0.25,
+        "open"
+      )
+    end
+  end
+
+  -- A gear: a ring with eight teeth.
+  static fn general(x: float, y: float, s: float) -> nil
+    local cx = x + s * 0.5
+    local cy = y + s * 0.5
+    Graphics.setLineWidth(Math.max(s * 0.1, 1.5))
+    Graphics.circle("line", cx, cy, s * 0.19)
+    local tooth = s * 0.1
+    for i = 0, 7 do
+      local angle = Math.pi * (i as float) / 4.0
+      local tx = cx + Math.cos(angle) * s * 0.29
+      local ty = cy + Math.sin(angle) * s * 0.29
+      Graphics.circle("fill", tx, ty, tooth / 2.0)
+    end
+  end
+
+  -- A screen on its foot.
+  static fn displays(x: float, y: float, s: float) -> nil
+    Graphics.rectangle(
+      "fill",
+      x + s * 0.17,
+      y + s * 0.24,
+      s * 0.66,
+      s * 0.42,
+      s * 0.06
+    )
+    Graphics.rectangle("fill", x + s * 0.45, y + s * 0.66, s * 0.1, s * 0.08)
+    Graphics.rectangle(
+      "fill",
+      x + s * 0.33,
+      y + s * 0.73,
+      s * 0.34,
+      s * 0.06,
+      s * 0.03
+    )
+  end
+
+  -- A padlock.
+  static fn password(x: float, y: float, s: float) -> nil
+    Graphics.setLineWidth(Math.max(s * 0.08, 1.2))
+    Graphics.arc(
+      "line",
+      x + s * 0.5,
+      y + s * 0.42,
+      s * 0.14,
+      -Math.pi,
+      0.0,
+      "open"
+    )
+    Graphics.rectangle(
+      "fill",
+      x + s * 0.27,
+      y + s * 0.42,
+      s * 0.46,
+      s * 0.36,
+      s * 0.07
+    )
+  end
+
+  -- A pad with its button line.
+  static fn trackpad(x: float, y: float, s: float) -> nil
+    local left = x + s * 0.18
+    local top = y + s * 0.26
+    Graphics.rectangle("fill", left, top, s * 0.64, s * 0.48, s * 0.08)
+    PaneIcon.colour(Pane.Trackpad).apply()
+    local line = Math.max(s * 0.04, 1.0)
+    Graphics.rectangle("fill", left, top + s * 0.34, s * 0.64, line)
+  end
+
+  -- A clock at ten past ten.
+  static fn dateTime(x: float, y: float, s: float) -> nil
+    local cx = x + s * 0.5
+    local cy = y + s * 0.5
+    Graphics.circle("fill", cx, cy, s * 0.3)
+    PaneIcon.colour(Pane.DateTime).apply()
+    Graphics.setLineWidth(Math.max(s * 0.07, 1.2))
+    Graphics.line(cx, cy, cx - s * 0.13, cy - s * 0.1)
+    Graphics.line(cx, cy, cx + s * 0.15, cy - s * 0.13)
   end
 
   -- Two windows side by side: the tiling.

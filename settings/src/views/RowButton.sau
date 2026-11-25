@@ -1,0 +1,30 @@
+-- A button at the right of a row: as wide as its word, where a button
+-- left to itself takes all the room there is and pushes the row's label
+-- onto a line of its own.
+
+from uikit import *
+from theme import Style
+
+export class RowButton extends View
+  label: string
+  onPressed: Action
+
+  fn init(label: string, onPressed: Action, key: string? = nil)
+    self.super(key ?? label)
+    self.label = label
+    self.onPressed = onPressed
+  end
+
+  fn body(context: BuildContext) -> View
+    local button = Button(
+      label: self.label,
+      onPressed: self.onPressed,
+      color: Style.segment,
+      textSize: 12.0,
+      padding: EdgeInsets.symmetric(horizontal: 10.0, vertical: 4.0)
+    )
+    -- About seven points a letter at this size, and the padding.
+    local width = 24.0 + 7.0 * (String.len(self.label) as float)
+    return button.frame(width: width)
+  end
+end

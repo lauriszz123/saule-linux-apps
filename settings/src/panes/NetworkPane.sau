@@ -1,0 +1,66 @@
+-- How the computer is connected: by cable, by Wi-Fi, and the address
+-- each gave it. A cable needs nothing set: it is used as soon as it is
+-- in. Wi-Fi networks are chosen in the Wi-Fi pane.
+
+from uikit import *
+from model import SystemSettings
+from theme import Style
+from views import Group, PaneTitle, Row, Said
+
+export class NetworkPane extends View
+  settings: SystemSettings
+
+  fn init(settings: SystemSettings, key: string? = nil)
+    self.super(key)
+    self.settings = settings
+  end
+
+  fn body(context: BuildContext) -> View
+    local machine = self.settings.machine
+    local items: table<View> = {PaneTitle("Network")}
+
+    if machine.wired then
+      local status = "No cable"
+      if machine.wiredAddress != "" then
+        status = "Connected"
+      elseif machine.cable then
+        status = "Waiting for an address"
+      end
+      local rows: table<View> = {Row("Status", Said(status))}
+      if machine.wiredAddress != "" then
+        Table.insert(rows, Row("IP address", Said(machine.wiredAddress)))
+      end
+      Table.insert(items, Group("Ethernet", rows))
+    end
+
+    if machine.radio != "none" then
+      local status = "Off"
+      if machine.radio == "on" then
+        status = NetworkPane.wifi(machine.wifi, machine.wifiName)
+      end
+      local rows: table<View> = {Row("Status", Said(status))}
+      if machine.wifiAddress != "" then
+        Table.insert(rows, Row("IP address", Said(machine.wifiAddress)))
+      end
+      Table.insert(items, Group("Wi-Fi", rows))
+    end
+
+    if not machine.wired and machine.radio == "none" then
+      Table.insert(
+        items,
+        Said.note("This computer has nothing to connect to a network with.")
+      )
+    end
+    return Said.pane(items)
+  end
+
+  -- How Wi-Fi stands, said in a few words.
+  static fn wifi(state: string, name: string) -> string
+    return match state
+      case "joined" then "Connected to " .. name
+      case "joining" then "Joining " .. name .. "…"
+      case "failed" then "Could not join " .. name
+      case _ then "Not connected"
+    end
+  end
+end

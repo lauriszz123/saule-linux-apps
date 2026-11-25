@@ -1,0 +1,85 @@
+-- How the trackpad feels: how fast the pointer goes under a finger,
+-- whether a tap is a click, how fast two fingers scroll and which way.
+-- Its own settings, apart from the mouse's: somebody with both wants
+-- each its own way. Shown on a computer that has a trackpad.
+
+from uikit import *
+from model import SystemSettings
+from theme import Style
+from views import Group, PaneTitle, Row, Said, SliderControl
+
+export class TrackpadPane extends View
+  settings: SystemSettings
+  changed: Action
+
+  fn init(settings: SystemSettings, changed: Action, key: string? = nil)
+    self.super(key)
+    self.settings = settings
+    self.changed = changed
+  end
+
+  fn body(context: BuildContext) -> View
+    local settings = self.settings
+    local options = settings.options
+    local changed = self.changed
+
+    local speed = SliderControl(
+      options.trackpadSpeed,
+      0.25,
+      3.0,
+      0.25,
+      "×",
+      fn(v: float)
+        options.trackpadSpeed = v
+        changed()
+      end,
+      format: "%.2f"
+    )
+    local tap = Toggle(value: options.tapToClick, onChanged: fn(on: boolean)
+      options.tapToClick = on
+      changed()
+    end)
+    local scroll = SliderControl(
+      options.trackpadScrollSpeed,
+      0.25,
+      3.0,
+      0.25,
+      "×",
+      fn(v: float)
+        options.trackpadScrollSpeed = v
+        changed()
+      end,
+      format: "%.2f"
+    )
+    local natural = Toggle(
+      value: options.trackpadNaturalScrolling,
+      onChanged: fn(on: boolean)
+        options.trackpadNaturalScrolling = on
+        changed()
+      end
+    )
+
+    local items: table<View> = {
+      PaneTitle("Trackpad"),
+      Group("Point & Click", {
+        Row("Tracking speed", speed),
+        Row("Tap to click", tap),
+      }),
+      Said.note(
+        "A tap with one finger clicks, with two is the secondary click, and with three the middle one. Pressing the pad with two fingers on it is the secondary click too."
+      ),
+      Group("Scroll", {
+        Row("Scroll speed", scroll),
+        Row("Natural scrolling", natural),
+      }),
+      Said.note(
+        "Two fingers scroll. With natural scrolling, what is scrolled moves the way the fingers do."
+      ),
+    }
+    local devices = Said.devices(settings.machine, "touchpad", "trackpad")
+    if #devices > 0 then
+      Table.insert(items, Group("Trackpad", devices))
+    end
+    return Said.pane(items)
+  end
+end

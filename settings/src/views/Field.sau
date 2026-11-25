@@ -1,0 +1,50 @@
+-- A text field as Settings' rows have them: on the card's own grey, lit
+-- in the accent while it has the keyboard.
+
+from uikit import *
+from theme import Style
+
+export class Field extends View
+  value: string
+  placeholder: string
+  hidden: boolean
+  wide: float
+  onChanged: ValueChanged<string>
+  onSubmitted: ValueChanged<string>?
+
+  fn init(
+    value: string,
+    placeholder: string,
+    onChanged: ValueChanged<string>,
+    onSubmitted: ValueChanged<string>? = nil,
+    hidden: boolean = false,
+    wide: float = 200.0,
+    key: string? = nil
+  )
+    self.super(key ?? placeholder)
+    self.value = value
+    self.placeholder = placeholder
+    self.hidden = hidden
+    self.wide = wide
+    self.onChanged = onChanged
+    self.onSubmitted = onSubmitted
+  end
+
+  fn body(context: BuildContext) -> View
+    return TextField(
+      value: self.value,
+      placeholder: self.placeholder,
+      style: TextStyle(Style.text, 13.0),
+      placeholderStyle: TextStyle(Style.dimText, 13.0),
+      background: Style.track,
+      border: Style.hairline,
+      focusBorder: Theme.of(context).primary,
+      padding: EdgeInsets.symmetric(horizontal: 8.0, vertical: 5.0),
+      radius: 6.0,
+      width: self.wide,
+      obscure: self.hidden,
+      onChanged: self.onChanged,
+      onSubmitted: self.onSubmitted
+    )
+  end
+end

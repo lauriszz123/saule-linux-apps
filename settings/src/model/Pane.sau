@@ -1,23 +1,61 @@
--- The panes Settings has, in the order the sidebar lists them.
+-- The panes Settings has. The sidebar lists them in groups, as a Mac's
+-- does (see `Sidebar.groups`), and only those the computer has something
+-- for: no Trackpad on a computer without one.
+--
+-- The last three are not in the sidebar: General opens them, and they
+-- lead back to it.
 
 export enum Pane
-  Windows,
+  Wifi,
+  Bluetooth,
+  Network,
+  Sound,
+  General,
+  Displays,
   Appearance,
+  Windows,
   Wallpaper,
+  Password,
   Keyboard,
   Mouse,
+  Trackpad,
+  About,
   Storage,
-  About
+  DateTime
 
   fn title() -> string
     return match self
-      case Pane.Windows then "Windows"
+      case Pane.Wifi then "Wi-Fi"
+      case Pane.Bluetooth then "Bluetooth"
+      case Pane.Network then "Network"
+      case Pane.Sound then "Sound"
+      case Pane.General then "General"
+      case Pane.Displays then "Displays"
       case Pane.Appearance then "Appearance"
+      case Pane.Windows then "Desktop & Windows"
       case Pane.Wallpaper then "Wallpaper"
+      case Pane.Password then "Login Password"
       case Pane.Keyboard then "Keyboard"
       case Pane.Mouse then "Mouse"
-      case Pane.Storage then "Storage"
+      case Pane.Trackpad then "Trackpad"
       case Pane.About then "About"
+      case Pane.Storage then "Storage"
+      case Pane.DateTime then "Date & Time"
+    end
+  end
+
+  -- The pane this one is opened from, and leads back to; nil for one the
+  -- sidebar lists.
+  fn parent() -> Pane?
+    match self
+      case Pane.About then
+        return Pane.General
+      case Pane.Storage then
+        return Pane.General
+      case Pane.DateTime then
+        return Pane.General
+      case _ then
+        return nil
     end
   end
 end

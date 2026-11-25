@@ -8,3 +8,12 @@ export from MousePane import *
 export from StoragePane import *
 export from AboutPane import *
 export from OfflinePane import *
+export from SoundPane import *
+export from DisplaysPane import *
+export from NetworkPane import *
+export from WifiPane import *
+export from BluetoothPane import *
+export from GeneralPane import *
+export from DateTimePane import *
+export from PasswordPane import *
+export from TrackpadPane import *

@@ -1,50 +1,97 @@
 -- The Settings window: the sidebar of panes, and the pane that is open
 -- beside it.
 --
--- Every change goes the same way: a pane edits the settings, calls
--- `changed`, and that sends them to the window manager and builds the
--- window again from what it answered — so what is shown is always what
--- the window manager is using.
+-- A change to the window manager's own settings goes one way: a pane
+-- edits them, calls `changed`, and that sends them to the window manager
+-- and builds the window again from what it answered — so what is shown
+-- is always what the window manager is using.
+--
+-- The computer itself (its sound, network, devices) changes from outside
+-- too: a key turns the volume, a mouse is plugged in. So the window asks
+-- how it stands every second, and builds again when anything it shows
+-- changed; a pane whose device has gone gives way to the first one.
 
 from uikit import *
 from "wmapi" import Presets
 from model import Pane, SystemSettings
 from theme import Style
-from views import Sidebar
+from views import PaneIcon, Sidebar
 from panes import AboutPane, AppearancePane, KeyboardPane, MousePane
 from panes import StoragePane
 from panes import OfflinePane
 from panes import WallpaperPane
 from panes import WindowsPane
+from panes import DateTimePane, DisplaysPane, GeneralPane, NetworkPane
+from panes import BluetoothPane, PasswordPane, SoundPane, TrackpadPane
+from panes import WifiPane
 
 export class SettingsWindow extends View
   settings: SystemSettings
 
-  -- The pane open at first, by its place in the sidebar.
+  -- The pane open at first, by its place among all of them
+  -- (`Sidebar.every`).
   first: integer
 
-  fn init(settings: SystemSettings, first: integer = 1, key: string? = nil)
+  -- How often the computer is asked about again, in seconds.
+  static every: float = 1.0
+
+  fn init(settings: SystemSettings, first: integer = 0, key: string? = nil)
     self.super(key)
     self.settings = settings
     self.first = first
   end
 
-  -- The place in the sidebar of the pane called `name` ("storage",
-  -- "Wallpaper"), or of the first one when there is no such pane.
+  -- The place of the pane called `name` ("storage", "Wallpaper", "wi-fi";
+  -- its first word will do), or 0 when there is no such pane: then the
+  -- first one the sidebar lists is opened.
   static fn place(name: string) -> integer
-    for i = 1, #Sidebar.order do
-      if String.lower(Sidebar.order[i].title()) == String.lower(name) then
+    local wanted = String.lower(name)
+    if wanted == "" then
+      return 0
+    end
+    local panes = Sidebar.every()
+    for i = 1, #panes do
+      local title = String.lower(panes[i].title())
+      if title == wanted or String.split(title, " ")[1] == wanted then
         return i
       end
     end
-    return 1
+    return 0
+  end
+
+  -- It has a tick to run: see `View.ticks`.
+  fn ticks() -> boolean
+    return true
+  end
+
+  fn tick(el: Element, dt: float) -> nil
+    local bag: table = el.data.scratch
+    local waited = ((bag.waited as float?) ?? 0.0) + dt
+    if waited < SettingsWindow.every then
+      bag.waited = waited
+      return
+    end
+    bag.waited = 0.0
+    if self.settings.refreshMachine() then
+      el.markNeedsBuild()
+    end
   end
 
   fn body(context: BuildContext) -> View
     local settings = self.settings
+    local machine = settings.machine
+    local panes = Sidebar.every()
     local revision = context.state("revision", 0)
     local opened = context.state("pane", self.first)
-    local open = Sidebar.order[opened.int(self.first)]
+
+    -- The pane asked for, if the computer has what it is about; else
+    -- the first the sidebar lists.
+    local groups = Sidebar.shown(machine)
+    local open = groups[1][1]
+    local asked = panes[opened.int(self.first)]
+    if asked != nil and Sidebar.has(asked!, machine) then
+      open = asked!
+    end
 
     local refresh = fn()
       revision.set(revision.int(0) + 1)
@@ -56,13 +103,13 @@ export class SettingsWindow extends View
     local openPane = fn(pane: Pane)
       -- A shortcut half recorded is dropped with its pane.
       settings.recordKeys(false)
-      for i = 1, #Sidebar.order do
-        if Sidebar.order[i] == pane then
+      for i = 1, #panes do
+        if panes[i] == pane then
           opened.set(i)
         end
       end
       -- About shows the system as it is now, not as it was at launch.
-      if pane == Pane.About then
+      if pane == Pane.About or pane == Pane.Displays then
         settings.refreshInfo()
       end
       if pane == Pane.Storage then
@@ -70,14 +117,21 @@ export class SettingsWindow extends View
       end
     end
 
-    local pane = self.pane(open, changed)
+    local pane = self.pane(open, changed, refresh, openPane)
+    local parent = open.parent()
+    if parent != nil then
+      pane = VStack(alignment: StackAlignment.Fill, spacing: 10.0) do
+        SettingsWindow.back(parent!, openPane)
+        pane.expanded()
+      end
+    end
     if not settings.connected() then
       pane = OfflinePane(settings, refresh)
     end
 
     local accent = Presets.find(Presets.accents, settings.options.accent)
     local layout = HStack(alignment: StackAlignment.Fill) do
-      Sidebar(open, openPane).frame(width: Style.sidebarWidth)
+      Sidebar(open, machine, openPane).frame(width: Style.sidebarWidth)
       pane.padding(Style.padding).expanded()
     end
     return Theme(
@@ -86,23 +140,62 @@ export class SettingsWindow extends View
     )
   end
 
+  -- The way back from a pane another opened: "‹ General".
+  static fn back(parent: Pane, openPane: ValueChanged<Pane>) -> View
+    local label = Text("‹  " .. parent.title()).font(13.0)
+    local go = fn()
+      openPane(parent)
+    end
+    local link = GestureArea(
+      child: label.foregroundStyle(Style.dimText),
+      onTap: go
+    )
+    return HStack(alignment: StackAlignment.Center) do
+      show(link)
+      Spacer()
+    end
+  end
+
   -- The view of the pane `open`.
-  local fn pane(open: Pane, changed: Action) -> View
+  local fn pane(
+    open: Pane,
+    changed: Action,
+    refresh: Action,
+    openPane: ValueChanged<Pane>
+  ) -> View
     local settings = self.settings
     local pane: View = AboutPane(settings)
     match open
-      case Pane.Windows then
-        pane = WindowsPane(settings, changed)
+      case Pane.Wifi then
+        pane = WifiPane(settings, refresh)
+      case Pane.Bluetooth then
+        pane = BluetoothPane(settings, refresh)
+      case Pane.Network then
+        pane = NetworkPane(settings)
+      case Pane.Sound then
+        pane = SoundPane(settings, refresh)
+      case Pane.General then
+        pane = GeneralPane(settings, refresh, openPane)
+      case Pane.Displays then
+        pane = DisplaysPane(settings, refresh)
       case Pane.Appearance then
         pane = AppearancePane(settings, changed)
+      case Pane.Windows then
+        pane = WindowsPane(settings, changed)
       case Pane.Wallpaper then
         pane = WallpaperPane(settings, changed)
+      case Pane.Password then
+        pane = PasswordPane(settings, refresh)
       case Pane.Keyboard then
         pane = KeyboardPane(settings, changed)
       case Pane.Mouse then
         pane = MousePane(settings, changed)
+      case Pane.Trackpad then
+        pane = TrackpadPane(settings, changed)
       case Pane.Storage then
         pane = StoragePane(settings)
+      case Pane.DateTime then
+        pane = DateTimePane(settings, refresh)
       case Pane.About then nil
     end
     return pane

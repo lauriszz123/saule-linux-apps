@@ -24,7 +24,7 @@ export class Style
   static track: Color = Color(1.0, 1.0, 1.0, 0.08)
   static segment: Color = Color(1.0, 1.0, 1.0, 0.22)
 
-  static sidebarWidth: float = 180.0
+  static sidebarWidth: float = 204.0
   static padding: float = 20.0
   static rowHeight: float = 40.0
   static cardRadius: float = 10.0

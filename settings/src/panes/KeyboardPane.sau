@@ -1,3 +1,11 @@
+-- The keyboard: the layouts typed with, on a system that has layouts to
+-- choose from, and what keyboards there are; then the window manager's
+-- shortcuts.
+--
+-- Up to four layouts can be chosen. The first is the one the computer
+-- starts in (and its login screen is typed in); the shortcut "Switch the
+-- keyboard layout" goes round them, and the bar shows which one it is.
+--
 -- The window manager's keyboard shortcuts: the key they are all held with,
 -- and each one, which can be changed by clicking it and typing the new
 -- keys — as a Mac's Keyboard Shortcuts are.
@@ -11,7 +19,8 @@ from uikit import *
 from "wmapi" import KeyAction, KeyActions
 from model import SystemSettings
 from theme import Style
-from views import Group, PaneTitle, Row, Segmented, ShortcutField
+from views import Field, Group, PaneTitle, Row, RowButton, Said, Segmented
+from views import ShortcutField
 
 export class KeyboardPane extends View
   settings: SystemSettings
@@ -113,19 +122,151 @@ export class KeyboardPane extends View
       changed()
     end
 
-    local groups: table<View> = {
-      PaneTitle("Keyboard"),
+    local groups: table<View> = {PaneTitle("Keyboard")}
+    for view in KeyboardPane.layouts(settings, changed, context) do
+      Table.insert(groups, view)
+    end
+    local keyboards = Said.devices(settings.machine, "keyboard", "keyboard")
+    if #keyboards > 0 then
+      Table.insert(groups, Group("Keyboards", keyboards))
+    end
+    local shortcuts: table<View> = {
       Group("Shortcut key", modRows),
       Group("System", rows(KeyActions.system)),
       Group("Windows", rows(KeyActions.windows)),
       Group("Moving around", KeyboardPane.fixedRows(now)),
       KeyboardPane.footer(restore),
     }
+    for view in shortcuts do
+      Table.insert(groups, view)
+    end
     local fill = StackAlignment.Fill
     local column = VStack(alignment: fill, spacing: 18.0, children: groups)
     local inset = EdgeInsets.only(right: 8.0)
     local scroll = ScrollView(child: column.padding(insets: inset))
     return KeyboardListener(onKeyDown: typed, child: scroll)
+  end
+
+  -- How many layouts can be chosen, and how many a search lists.
+  static most: integer = 4
+  static found: integer = 6
+
+  -- The layouts chosen and the way to choose another; nothing where the
+  -- system has no layouts to offer.
+  static fn layouts(
+    settings: SystemSettings,
+    changed: Action,
+    context: BuildContext
+  ) -> table<View>
+    local machine = settings.machine
+    if not machine.layoutsOffered then
+      return {}
+    end
+    local options = settings.options
+    local query = context.state("layout", "")
+
+    -- As written in the settings, or the one layout in use when none
+    -- has been written yet.
+    local chosen: table<string> = {}
+    for code in String.split(options.keyboardLayouts, ",") do
+      if String.trim(code) != "" then
+        Table.insert(chosen, String.trim(code))
+      end
+    end
+    if #chosen == 0 then
+      Table.insert(chosen, machine.layout)
+    end
+    local use = fn(codes: table<string>)
+      options.keyboardLayouts = String.join(",", codes)
+      query.set("")
+      changed()
+    end
+
+    local rows: table<View> = {}
+    for i = 1, #chosen do
+      local code = chosen[i]
+      local control: View = Said("")
+      if #chosen > 1 then
+        control = RowButton("Remove", fn()
+          local rest: table<string> = {}
+          for other in chosen do
+            if other != code then
+              Table.insert(rest, other)
+            end
+          end
+          use(rest)
+        end)
+      elseif code == machine.layout then
+        control = Said("In use")
+      end
+      Table.insert(rows, Row(settings.layoutName(code), control))
+    end
+    if #chosen < KeyboardPane.most then
+      local typed = fn(text: string)
+        query.set(text)
+      end
+      local search = Field(query.text(""), "Search for a layout", typed)
+      Table.insert(rows, Row("Add a layout", search))
+    end
+    local out: table<View> = {Group("Layouts", rows)}
+
+    local wanted = String.lower(String.trim(query.text("")))
+    if wanted != "" then
+      -- The layout whose code was typed ("us") first, then those whose
+      -- name starts with what was typed, then those that have it
+      -- anywhere: "eng" must not stop at the sixth English before
+      -- reaching the one wanted.
+      local ranked: table<table<table<string>>> = {{}, {}, {}}
+      for layout in settings.layouts() do
+        local code = layout[1]
+        local name = String.lower(layout[2])
+        local taken = false
+        for other in chosen do
+          if other == code then
+            taken = true
+          end
+        end
+        if not taken then
+          if code == wanted then
+            Table.insert(ranked[1], layout)
+          elseif String.starts(name, wanted) then
+            Table.insert(ranked[2], layout)
+          elseif String.contains(name, wanted) then
+            Table.insert(ranked[3], layout)
+          end
+        end
+      end
+      local matches: table<View> = {}
+      for rank in ranked do
+        for layout in rank do
+          if #matches < KeyboardPane.found then
+            local code = layout[1]
+            local add = RowButton("Add", fn()
+              local more: table<string> = {}
+              for other in chosen do
+                Table.insert(more, other)
+              end
+              Table.insert(more, code)
+              use(more)
+            end)
+            Table.insert(matches, Row(layout[2], add))
+          end
+        end
+      end
+      if #matches > 0 then
+        Table.insert(out, Group("Found", matches))
+      else
+        Table.insert(out, Said.note("No layout by that name."))
+      end
+    elseif #chosen > 1 then
+      Table.insert(
+        out,
+        Said.note(
+          "The first is the one the computer starts in. The shortcut below goes round them, and the bar shows which is in use."
+        )
+      )
+    end
+    return out
   end
 
   -- A key typed while `name` is recorded: the new shortcut, Escape to
