@@ -20,16 +20,31 @@ from panes import WindowsPane
 export class SettingsWindow extends View
   settings: SystemSettings
 
-  fn init(settings: SystemSettings, key: string? = nil)
+  -- The pane open at first, by its place in the sidebar.
+  first: integer
+
+  fn init(settings: SystemSettings, first: integer = 1, key: string? = nil)
     self.super(key)
     self.settings = settings
+    self.first = first
+  end
+
+  -- The place in the sidebar of the pane called `name` ("storage",
+  -- "Wallpaper"), or of the first one when there is no such pane.
+  static fn place(name: string) -> integer
+    for i = 1, #Sidebar.order do
+      if String.lower(Sidebar.order[i].title()) == String.lower(name) then
+        return i
+      end
+    end
+    return 1
   end
 
   fn body(context: BuildContext) -> View
     local settings = self.settings
     local revision = context.state("revision", 0)
-    local opened = context.state("pane", 1)
-    local open = Sidebar.order[opened.int(1)]
+    local opened = context.state("pane", self.first)
+    local open = Sidebar.order[opened.int(self.first)]
 
     local refresh = fn()
       revision.set(revision.int(0) + 1)

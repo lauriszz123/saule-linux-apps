@@ -1,35 +1,50 @@
--- Storage, as the Mac's: each disk with its picture, how much of it is
--- available, and a bar of what its used space holds; then what each kind
--- of thing takes, where settings are kept, and what the main drive is.
+-- Storage, laid out as the Mac's: each volume as its name, how much of it
+-- is used, and one bar coloured by what uses it, with the colours named
+-- under it; then the kinds of thing as a list, each with its icon and its
+-- size; and last what the drive itself is.
+--
+-- Saule Linux has two places things are: the disk, where settings and
+-- documents are kept, and the memory the system itself runs from. Each is
+-- a volume here, the disk first.
 
 from uikit import *
 from "wmapi" import StorageCategory, StorageReport, StorageVolume
 from model import SystemSettings
 from theme import Style
-from views import DriveIcon, Group, PaneTitle, Row, StorageBar
+from views import CategoryIcon, Group, PaneTitle, Row, StorageBar
 
 export class StoragePane extends View
   settings: SystemSettings
+
+  -- How often the disks are asked about again, in seconds. Not every
+  -- second: the window manager counts files to answer.
+  static every: float = 3.0
+
+  -- The kinds listed, in the order a Mac lists its own: what is the
+  -- person's first, then the system's.
+  static mine: table<string> = {
+    "Applications",
+    "Documents",
+    "Wallpapers",
+    "Settings",
+  }
+  static system: table<string> = {"Saule Linux", "Other"}
 
   fn init(settings: SystemSettings, key: string? = nil)
     self.super(key)
     self.settings = settings
   end
 
-  -- How often the disks are asked about again, in seconds. Not every
-  -- second: the window manager counts files to answer.
-  static every: float = 3.0
-
   -- It has a tick to run: see `View.ticks`.
   fn ticks() -> boolean
     return true
   end
 
-  -- Ask again every `every` seconds, and build the pane again when a
-  -- number in it changed.
+  -- Ask at once, then again every `every` seconds, and build the pane
+  -- again when a number in it changed.
   fn tick(el: Element, dt: float) -> nil
     local bag: table = el.data.scratch
-    local waited = ((bag.waited as float?) ?? 0.0) + dt
+    local waited = ((bag.waited as float?) ?? StoragePane.every) + dt
     if waited < StoragePane.every then
       bag.waited = waited
       return
@@ -61,102 +76,134 @@ export class StoragePane extends View
   fn body(context: BuildContext) -> View
     local report = self.settings.storage
     local items: table<View> = {PaneTitle("Storage")}
-    if #report.volumes == 0 then
-      local none = Text("No disks were found.").font(13.0).foregroundStyle(
-        Style.dimText
-      )
-      Table.insert(items, none)
-    end
     for volume in report.volumes do
-      Table.insert(items, StoragePane.card(report, volume))
+      Table.insert(items, StoragePane.volume(report, volume))
     end
     if #report.volumes > 0 then
-      Table.insert(items, StoragePane.kept(report))
-      Table.insert(items, StoragePane.kinds(report))
+      local mine = StoragePane.kinds(report, StoragePane.mine)
+      local system = StoragePane.kinds(report, StoragePane.system)
+      if mine != nil then
+        Table.insert(items, mine!)
+      end
+      if system != nil then
+        Table.insert(items, system!)
+      end
       Table.insert(items, StoragePane.drive(report.volumes[1]))
     end
+
     local fill = StackAlignment.Fill
-    local column = VStack(alignment: fill, spacing: 18.0, children: items)
-    local inset = EdgeInsets.only(left: 4.0, top: 4.0, right: 8.0, bottom: 8.0)
+    local column = VStack(alignment: fill, spacing: 20.0, children: items)
+    local inset = EdgeInsets.only(left: 4.0, top: 4.0, right: 8.0, bottom: 12.0)
     return ScrollView(child: column.padding(insets: inset))
   end
 
-  -- One volume: its picture and name, how much is available, and the bar
-  -- of what it holds with the legend under it.
-  static fn card(report: StorageReport, volume: StorageVolume) -> View
+  -- One volume: its name and how much of it is used, the bar of what uses
+  -- it with the colours named under it, and a line about it below.
+  static fn volume(report: StorageReport, volume: StorageVolume) -> View
+    local used = StorageReport.bytes(volume.total - volume.free)
+    local name = Text(volume.name).font(15.0).foregroundStyle(Style.text)
+    local amount = Text(
+      used .. " of " .. StorageReport.bytes(volume.total) .. " used"
+    )
+    local center = StackAlignment.Center
+    local head = HStack(
+      alignment: center,
+      children: {
+        name,
+        Spacer(),
+        amount.font(13.0).foregroundStyle(Style.dimText),
+      }
+    )
+
+    -- Each kind of thing on this volume, then the rest of what is used.
+    local sizes: table<integer> = {}
+    local colours: table<Color> = {}
+    local legend: table<View> = {}
+    for category in StoragePane.on(report, volume) do
+      if category.bytes > 0 then
+        Table.insert(sizes, category.bytes)
+        Table.insert(colours, CategoryIcon.colour(category.name))
+        Table.insert(legend, StoragePane.key(category.name))
+      end
+    end
+    local bar = StorageBar(sizes, colours, volume.total).frame(height: 22.0)
+
+    local free = Text(StorageReport.bytes(volume.free) .. " available")
+    Table.insert(legend, Spacer())
+    Table.insert(legend, free.font(11.0).foregroundStyle(Style.dimText))
+    local foot = HStack(alignment: center, spacing: 14.0, children: legend)
+
+    local fill = StackAlignment.Fill
+    local inside = VStack(
+      alignment: fill,
+      spacing: 12.0,
+      children: {head, bar, foot}
+    )
+    local card = inside.padding(insets: EdgeInsets.all(16.0)).background(
+      Style.card,
+      Style.cardRadius
+    )
+
+    local colour = Style.dimText
+    local about = StoragePane.about(report, volume)
+    if volume.kind == "memory" and not report.persistent then
+      colour = Style.warning
+    end
+    local note = Text(about).font(11.0).foregroundStyle(colour).lineLimit(2)
+    local under = note.padding(insets: EdgeInsets.only(left: 4.0, right: 4.0))
+    return VStack(alignment: fill, spacing: 8.0, children: {card, under})
+  end
+
+  -- What is said under a volume: the drive it is on, and what it is for.
+  static fn about(report: StorageReport, volume: StorageVolume) -> string
+    if volume.kind == "memory" then
+      if report.persistent then
+        return "The system itself, which runs from memory."
+      end
+      return "The system runs from memory, and there is no disk to keep" .. " things on: settings last until the computer turns off."
+    end
     local size = volume.driveBytes
     if size <= 0 then
       size = volume.total
     end
-    local name = Text(volume.name).font(15.0).foregroundStyle(Style.text)
-    local free = StorageReport.bytes(volume.free) .. " available of " .. StorageReport.bytes(
-      volume.total
+    local drive = StorageReport.bytes(size) .. " " .. StorageReport.kindName(
+      volume.kind
     )
-    local available = Text(free).font(12.0).foregroundStyle(Style.dimText)
-    local about: table<string> = {}
     if volume.model != "" then
-      Table.insert(about, volume.model)
+      drive = volume.model .. " · " .. drive
     end
-    if volume.kind != "memory" then
-      Table.insert(
-        about,
-        StorageReport.bytes(size) .. " " .. StorageReport.kindName(volume.kind)
-      )
+    if volume.main and report.persistent then
+      return drive .. ". Settings and documents are kept here."
     end
-    local described = Text(String.join(" · ", about)).font(11.0).foregroundStyle(
-      Style.dimText
-    )
+    return drive
+  end
 
-    local lead = StackAlignment.Leading
-    local words = VStack(
-      alignment: lead,
-      spacing: 3.0,
-      children: {name, available, described}
-    )
-    local icon = DriveIcon(volume.kind).frame(width: 52.0, height: 52.0)
-    local head = HStack(
-      alignment: StackAlignment.Center,
-      spacing: 14.0,
-      children: {icon, words}
-    )
-
-    -- The bar: each kind of thing on this volume, then the rest of what
-    -- is used.
-    local sizes: table<integer> = {}
-    local colours: table<Color> = {}
-    local legend: table<View> = {}
+  -- The kinds of thing on `volume`, and "Other": what else it holds.
+  static fn on(report: StorageReport, volume: StorageVolume) -> table<StorageCategory>
+    local found: table<StorageCategory> = {}
     local counted = 0
     for category in report.categories do
-      if category.volume == volume.mount and category.bytes > 0 then
-        Table.insert(sizes, category.bytes)
-        Table.insert(colours, StoragePane.colour(category.name))
-        Table.insert(legend, StoragePane.key(category.name))
+      if category.volume == volume.mount then
+        Table.insert(found, category)
         counted += category.bytes
       end
     end
-    local other = volume.used - counted
-    if other > 0 then
-      Table.insert(sizes, other)
-      Table.insert(colours, StoragePane.colour("Other"))
-      Table.insert(legend, StoragePane.key("Other"))
+    local other = StorageCategory()
+    other.name = "Other"
+    other.volume = volume.mount
+    -- All that isn't available: what the file system keeps for itself is
+    -- of no more use to anyone than a file would be.
+    other.bytes = Math.max(volume.total - volume.free - counted, 0)
+    if other.bytes > 0 then
+      Table.insert(found, other)
     end
-    local bar = StorageBar(sizes, colours, volume.total).frame(height: 16.0)
-
-    local fill = StackAlignment.Fill
-    local center = StackAlignment.Center
-    local keys = HStack(alignment: center, spacing: 16.0, children: legend)
-    local items: table<View> = {head, bar, keys}
-    local inside = VStack(alignment: fill, spacing: 12.0, children: items)
-    return inside.padding(insets: EdgeInsets.all(14.0)).background(
-      Style.card,
-      Style.cardRadius
-    )
+    return found
   end
 
-  -- A legend entry: the colour's dot and the name.
+  -- A colour's name under the bar: its dot and the kind it stands for.
   static fn key(name: string) -> View
     local dot = Spacer().frame(width: 8.0, height: 8.0).background(
-      StoragePane.colour(name),
+      CategoryIcon.colour(name),
       4.0
     )
     local label = Text(name).font(11.0).foregroundStyle(Style.dimText)
@@ -167,109 +214,94 @@ export class StoragePane extends View
     )
   end
 
-  -- Whether settings outlive a restart, and where they are kept.
-  static fn kept(report: StorageReport) -> View
-    local said = "Kept on " .. report.volumes[1].name .. ": they stay after a restart"
-    local colour = Style.dimText
-    if not report.persistent then
-      said = "In memory only: lost when the computer turns off"
-      colour = Style.warning
-    end
-    local value = Text(said).font(12.0).foregroundStyle(colour)
-    return Group("Settings", {Row("Your settings", value)})
-  end
-
-  -- What each kind of thing takes up, biggest first, as the Mac's list.
-  static fn kinds(report: StorageReport) -> View
-    local categories: table<StorageCategory> = Table.copy(report.categories)
-    Table.sort(
-      categories,
-      fn(a: StorageCategory, b: StorageCategory) -> boolean
-        return a.bytes > b.bytes
+  -- The kinds named in `names`, as a list: each with its icon and what it
+  -- takes up. Nil when the system has none of them.
+  static fn kinds(report: StorageReport, names: table<string>) -> View?
+    local all: table<StorageCategory> = {}
+    for volume in report.volumes do
+      for category in StoragePane.on(report, volume) do
+        Table.insert(all, category)
       end
-    )
+    end
     local rows: table<View> = {}
-    for category in categories do
-      Table.insert(rows, StoragePane.kind(report, category))
+    for name in names do
+      local bytes = 0
+      local found = false
+      for category in all do
+        if category.name == name then
+          bytes += category.bytes
+          found = true
+        end
+      end
+      if found then
+        if #rows > 0 then
+          Table.insert(rows, StoragePane.hairline())
+        end
+        Table.insert(rows, StoragePane.kind(name, bytes))
+      end
     end
     if #rows == 0 then
-      local none = Text("Nothing counted").font(13.0).foregroundStyle(
-        Style.dimText
-      )
-      Table.insert(rows, Row("Used", none))
+      return nil
     end
-    return Group("Used by", rows)
+    local list = VStack(alignment: StackAlignment.Fill, children: rows)
+    return list.background(Style.card, Style.cardRadius)
   end
 
-  -- One kind: its colour as an icon, its name and the volume it is on,
-  -- and its size on the right.
-  static fn kind(report: StorageReport, category: StorageCategory) -> View
-    local swatch = Spacer().frame(width: 22.0, height: 22.0).background(
-      StoragePane.colour(category.name),
-      6.0
-    )
-    local where = ""
-    for volume in report.volumes do
-      if volume.mount == category.volume then
-        where = volume.name
-      end
-    end
-    local name = Text(category.name).font(13.0).foregroundStyle(Style.text)
-    local on = Text("On " .. where).font(11.0).foregroundStyle(Style.dimText)
-    local lead = StackAlignment.Leading
-    local words = VStack(alignment: lead, spacing: 1.0, children: {name, on})
-    local size = Text(StorageReport.bytes(category.bytes)).font(13.0).foregroundStyle(
-      Style.dimText
-    )
-    local center = StackAlignment.Center
+  -- One kind: its icon and name, and its size on the right.
+  static fn kind(name: string, bytes: integer) -> View
+    local icon = CategoryIcon(name).frame(width: 26.0, height: 26.0)
+    local label = Text(name).font(13.0).foregroundStyle(Style.text)
+    local size = Text(StoragePane.amount(bytes)).font(13.0)
     local line = HStack(
-      alignment: center,
-      spacing: 10.0,
-      children: {swatch, words, Spacer(), size}
+      alignment: StackAlignment.Center,
+      spacing: 12.0,
+      children: {icon, label, Spacer(), size.foregroundStyle(Style.dimText)}
     )
-    local inset = EdgeInsets.only(
-      left: 14.0,
-      top: 7.0,
-      right: 14.0,
-      bottom: 7.0
-    )
+    local inset = EdgeInsets.symmetric(horizontal: 14.0, vertical: 9.0)
     return line.padding(insets: inset)
   end
 
-  -- What the main drive is.
+  -- Between two kinds, starting where their names do.
+  static fn hairline() -> View
+    local line = Spacer().frame(height: 1.0).background(Style.hairline)
+    return line.padding(insets: EdgeInsets.only(left: 52.0))
+  end
+
+  -- A size as the list says it: nothing at all is "Zero KB", as on a Mac.
+  static fn amount(bytes: integer) -> string
+    if bytes <= 0 then
+      return "Zero KB"
+    end
+    return StorageReport.bytes(bytes)
+  end
+
+  -- What the main drive is: only what it says of itself.
   static fn drive(volume: StorageVolume) -> View
     local size = volume.driveBytes
     if size <= 0 then
       size = volume.total
     end
-    local speed = ""
+    local kind = StoragePane.kindTitle(volume.kind)
     if volume.rpm > 0 then
-      speed = volume.rpm .. " rpm"
+      kind = kind .. ", " .. volume.rpm .. " rpm"
     end
-    local rows: table<View> = {
-      StoragePane.fact("Name", volume.name),
-      StoragePane.fact("Drive", volume.model),
-      StoragePane.fact("Kind", StoragePane.kindTitle(volume.kind)),
-      StoragePane.fact("Capacity", StorageReport.bytes(size)),
-      StoragePane.fact("Spins at", speed),
-      StoragePane.fact("Connection", volume.connection),
-      StoragePane.fact("Serial number", volume.serial),
-      StoragePane.fact("Volume size", StorageReport.bytes(volume.total)),
-      StoragePane.fact("Used", StorageReport.bytes(volume.used)),
-      StoragePane.fact("Available", StorageReport.bytes(volume.free)),
-      StoragePane.fact("File system", volume.fileSystem),
-      StoragePane.fact("Device", volume.device),
-      StoragePane.fact("Mounted at", volume.mount),
+    local facts: table<table<string>> = {
+      {"Model", volume.model},
+      {"Kind", kind},
+      {"Capacity", StorageReport.bytes(size)},
+      {"Connection", volume.connection},
+      {"Format", volume.fileSystem},
+      {"Serial number", volume.serial},
+      {"Device", volume.device},
     }
-    return Group("Drive", rows)
-  end
-
-  static fn fact(label: string, value: string) -> View
-    local shown = value
-    if shown == "" then
-      shown = "—"
+    local rows: table<View> = {}
+    for fact in facts do
+      if fact[2] != "" then
+        local value = Text(fact[2]).font(13.0).foregroundStyle(Style.dimText)
+        Table.insert(rows, Row(fact[1], value))
+      end
     end
-    return Row(label, Text(shown).font(13.0).foregroundStyle(Style.dimText))
+    return Group("Drive", rows)
   end
 
   static fn kindTitle(kind: string) -> string
@@ -279,19 +311,6 @@ export class StoragePane extends View
       case "usb" then "USB drive"
       case "memory" then "Memory"
       case _ then "Disk"
-    end
-  end
-
-  -- Each kind's colour, the Mac's where it has one: apps red, documents
-  -- (the home) orange, photos (wallpapers) yellow, the system grey.
-  static fn colour(name: string) -> Color
-    return match name
-      case "Apps" then Color(0.98, 0.33, 0.30)
-      case "Home" then Color(1.0, 0.62, 0.04)
-      case "Settings" then Color(0.25, 0.52, 0.96)
-      case "Wallpapers" then Color(1.0, 0.80, 0.04)
-      case "System" then Color(0.56, 0.56, 0.60)
-      case _ then Color(0.78, 0.78, 0.80)
     end
   end
 end

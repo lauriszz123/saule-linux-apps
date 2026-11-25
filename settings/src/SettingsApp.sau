@@ -1,5 +1,6 @@
 -- Settings as a uikit app: one window, a sidebar of panes beside the pane
--- that is open.
+-- that is open. Started with a pane's name (`settings storage`), it opens
+-- on that pane.
 
 from uikit import *
 from model import SystemSettings
@@ -15,7 +16,7 @@ export class SettingsApp extends App
 
   fn body() -> Scene
     return WindowGroup(title: "Settings", width: 720, height: 480) do
-      SettingsWindow(self.settings)
+      SettingsWindow(self.settings, SettingsWindow.place(Os.args()[1] ?? ""))
     end
   end
 end

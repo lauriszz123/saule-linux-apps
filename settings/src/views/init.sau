@@ -12,5 +12,5 @@ export from Swatch import *
 export from WallpaperTile import *
 export from Flow import *
 export from ShortcutField import *
-export from DriveIcon import *
+export from CategoryIcon import *
 export from StorageBar import *

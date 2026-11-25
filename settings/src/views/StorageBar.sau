@@ -1,6 +1,6 @@
--- How full a volume is, as the Mac's Storage pane shows it: a bar of
--- rounded segments side by side, one colour for each kind of thing on it,
--- a small gap between, and what is free left as the empty track.
+-- How full a volume is, as the Mac's Storage shows it: one rounded bar,
+-- a stretch of it in the colour of each kind of thing, a hairline between
+-- them, and what is free left as the empty track.
 --
 -- A kind that takes up almost nothing still gets a sliver, so the bar
 -- shows everything its legend names.
@@ -9,13 +9,14 @@ import shine
 from uikit import *
 
 export class StorageBar extends View
-  -- Each segment's bytes and colour, in order, and the volume's size.
+  -- Each stretch's bytes and colour, in order, and the volume's size.
   sizes: table<integer>
   colours: table<Color>
   total: integer
 
-  static gap: float = 2.0
-  static sliver: float = 4.0
+  static track: Color = Color(1.0, 1.0, 1.0, 0.10)
+  static hairline: float = 1.0
+  static sliver: float = 3.0
 
   fn init(
     sizes: table<integer>,
@@ -36,25 +37,32 @@ export class StorageBar extends View
   fn paint(el: Element, x: float, y: float) -> nil
     local w = el.size.width
     local h = el.size.height
-    local r = Math.min(h * 0.3, 5.0)
-    Graphics.setColor(1.0, 1.0, 1.0, 0.10)
+    local r = Math.min(h * 0.3, 6.0)
+    StorageBar.track.apply()
     Graphics.rectangle("fill", x, y, w, h, r)
     if self.total <= 0 then
       return
     end
 
+    -- Each stretch is the whole bar in its colour, cut to its own span: so
+    -- the ends are the bar's round ends and every join is straight.
+    local sx, sy, sw, sh = Graphics.getScissor()
     local at = x
     for i = 1, #self.sizes do
       local bytes = self.sizes[i]
-      if bytes > 0 then
+      local room = x + w - at
+      if bytes > 0 and room > 0.0 then
         local share = (bytes as float) / (self.total as float) * w
-        local width = Math.max(share - StorageBar.gap, StorageBar.sliver)
-        width = Math.min(width, x + w - at)
-        if width > 0.0 then
-          self.colours[i].apply()
-          Graphics.rectangle("fill", at, y, width, h, Math.min(r, width / 2.0))
-          at += width + StorageBar.gap
-        end
+        local span = Math.max(
+          Math.floor(share + 0.5) as float,
+          StorageBar.sliver
+        )
+        span = Math.min(span, room)
+        Graphics.intersectScissor(at, y, span, h)
+        self.colours[i].apply()
+        Graphics.rectangle("fill", x, y, w, h, r)
+        Graphics.setScissor(sx, sy, sw, sh)
+        at += span + StorageBar.hairline
       end
     end
   end

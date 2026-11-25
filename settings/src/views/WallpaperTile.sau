@@ -6,6 +6,11 @@
 -- landscape takes many shapes and blurs, which a list of them redrawn
 -- every frame would feel. An animated one is drawn again a few times a
 -- second, as the window manager draws it.
+--
+-- Only one picture is drawn for the first time in any frame. A pane of
+-- twenty of them drawn at once is most of a second on a netbook, with the
+-- window frozen meanwhile; one a frame, the pane is there at once and its
+-- pictures fill in, each a plain tile of its own colour until then.
 
 import shine
 from uikit import *
@@ -24,6 +29,11 @@ export class WallpaperTile extends View
   static frameRate: float = 20.0
   static local last: float = 0.0
   static local time: float = 0.0
+
+  -- When a picture was last drawn for the first time, and how long after
+  -- that the next may be: less than a frame, so it is the next frame's.
+  static local firstDrawn: float = -1.0
+  static frameGap: float = 0.004
 
   fn init(preset: Preset, chosen: boolean, accent: Color, key: string? = nil)
     self.super(key)
@@ -60,8 +70,16 @@ export class WallpaperTile extends View
       w as integer,
       h as integer
     )
-    Graphics.setColor(1.0, 1.0, 1.0)
-    Graphics.drawRounded(picture, x, y, r)
+    if picture != nil then
+      Graphics.setColor(1.0, 1.0, 1.0)
+      Graphics.drawRounded(picture!, x, y, r)
+    else
+      -- Not its turn yet: its colour, and another frame to draw it in.
+      local c = self.preset.colours[1]
+      Graphics.setColor(c.r, c.g, c.b, 1.0)
+      Graphics.rectangle("fill", x, y, w, h, r)
+      Repaint.request()
+    end
 
     -- A hairline round it, so a light one stands off the window.
     Graphics.setColor(1.0, 1.0, 1.0, 0.12)
@@ -76,13 +94,20 @@ export class WallpaperTile extends View
   end
 
   -- The picture of `preset`, `w` × `h`: the one drawn before, or drawn
-  -- now; an animated one drawn as it is now.
-  static fn picture(preset: Preset, w: integer, h: integer) -> Canvas
+  -- now; an animated one drawn as it is now. Nil when it has never been
+  -- drawn and another was first drawn this frame already.
+  static fn picture(preset: Preset, w: integer, h: integer) -> Canvas?
     local key = preset.name .. ":" .. tostring(w) .. "x" .. tostring(h)
     local kept = WallpaperTile.drawn[key]
     local moves = WallpaperArt.moves(preset.name)
     if kept != nil and not moves then
       return kept!
+    end
+    if kept == nil then
+      local since = Timer.getTime() - WallpaperTile.firstDrawn
+      if WallpaperTile.firstDrawn >= 0.0 and since < WallpaperTile.frameGap then
+        return nil
+      end
     end
     local image = kept ?? Graphics.newCanvas(w, h)
     local screen = Graphics.getCanvas()
@@ -103,6 +128,9 @@ export class WallpaperTile extends View
     Graphics.setCanvas(screen)
     Graphics.setScissor(sx, sy, sw, sh)
     WallpaperTile.drawn[key] = image
+    if kept == nil then
+      WallpaperTile.firstDrawn = Timer.getTime()
+    end
     return image
   end
 end
