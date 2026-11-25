@@ -1,0 +1,23 @@
+--[[
+Files: the computer's folders and what is in them, as a Mac's Finder.
+
+  saule run .            the home folder
+  saule run . /data      that folder
+
+    model   what the window is looking at (Browser), and asking the
+            window manager to open something in another app (Apps)
+    views   the window: a sidebar of places, a bar of ways to go and to
+            look, the folder as a list or as icons, and the path along
+            the foot
+
+Reading folders and doing things to files is fileskit's, shared with the
+editor's open and save panel.
+]]
+
+from FilesApp import FilesApp
+
+class Main
+  static fn main()
+    FilesApp().run()
+  end
+end

@@ -1,0 +1,108 @@
+-- One thing in a folder: a file or a folder, with what the system says
+-- of it.
+
+export class Entry
+  name: string
+  -- The whole path to it.
+  path: string
+  folder: boolean
+  -- In bytes; a folder's is not what is in it, and is not shown.
+  size: integer
+  -- When it was last changed, in Unix seconds.
+  modified: integer
+
+  fn init(
+    name: string,
+    path: string,
+    folder: boolean,
+    size: integer,
+    modified: integer
+  )
+    self.name = name
+    self.path = path
+    self.folder = folder
+    self.size = size
+    self.modified = modified
+  end
+
+  -- Whether its name starts with a dot: not shown unless asked for.
+  fn hidden() -> boolean
+    return String.starts(self.name, ".")
+  end
+
+  -- What follows the last dot of the name, in small letters; "" when
+  -- there is none (a leading dot is part of the name).
+  fn extension() -> string
+    for i = String.len(self.name), 2, -1 do
+      if String.sub(self.name, i, i) == "." then
+        return String.lower(String.sub(self.name, i + 1))
+      end
+    end
+    return ""
+  end
+
+  -- What kind of thing it is, as a file browser's Kind column says it.
+  fn kind() -> string
+    if self.folder then
+      return "Folder"
+    end
+    return match self.extension()
+      case "txt" then "Plain Text"
+      case "md" then "Markdown"
+      case "sau" then "Saule Source"
+      case "conf" then "Settings"
+      case "config" then "Settings"
+      case "json" then "JSON"
+      case "toml" then "TOML"
+      case "yml" then "YAML"
+      case "yaml" then "YAML"
+      case "sh" then "Shell Script"
+      case "log" then "Log"
+      case "rs" then "Rust Source"
+      case "c" then "C Source"
+      case "h" then "C Header"
+      case "py" then "Python Script"
+      case "html" then "HTML"
+      case "css" then "Style Sheet"
+      case "js" then "JavaScript"
+      case "xml" then "XML"
+      case "csv" then "Comma-Separated Values"
+      case "png" then "PNG Image"
+      case "jpg" then "JPEG Image"
+      case "jpeg" then "JPEG Image"
+      case "gif" then "GIF Image"
+      case "svg" then "SVG Image"
+      case "pdf" then "PDF Document"
+      case "zip" then "ZIP Archive"
+      case "gz" then "Compressed Archive"
+      case "ttf" then "Font"
+      case "" then "Document"
+      case _ then String.upper(self.extension()) .. " Document"
+    end
+  end
+
+  -- Whether a text editor can be expected to make sense of it, going by
+  -- its name: the kinds that are text, and a name with no extension
+  -- (README, a script). What it turns out to hold is the editor's to
+  -- find out.
+  fn text() -> boolean
+    if self.folder then
+      return false
+    end
+    return match self.extension()
+      case "png" then false
+      case "jpg" then false
+      case "jpeg" then false
+      case "gif" then false
+      case "pdf" then false
+      case "zip" then false
+      case "gz" then false
+      case "ttf" then false
+      case "so" then false
+      case "o" then false
+      case "img" then false
+      case "qcow2" then false
+      case _ then true
+    end
+  end
+end

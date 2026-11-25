@@ -1,0 +1,67 @@
+-- The file browser's colours and sizes: dark, as the system is, with a
+-- sidebar a little darker than the folder beside it.
+
+from uikit import Color, TextStyle, ThemeData
+
+export class Look
+  static window: Color = Color(0.15, 0.15, 0.17)
+  static sidebar: Color = Color(0.11, 0.11, 0.13)
+  static bar: Color = Color(0.19, 0.19, 0.21)
+  static hairline: Color = Color(0.0, 0.0, 0.0, 0.45)
+  static stripe: Color = Color(1.0, 1.0, 1.0, 0.03)
+  static text: Color = Color(0.95, 0.95, 0.97)
+  static dimText: Color = Color(1.0, 1.0, 1.0, 0.55)
+  static warning: Color = Color(1.0, 0.72, 0.42)
+  static accent: Color = Color(0.25, 0.48, 0.90)
+  static chosen: Color = Color(0.25, 0.48, 0.90)
+  static place: Color = Color(1.0, 1.0, 1.0, 0.12)
+  static button: Color = Color(1.0, 1.0, 1.0, 0.10)
+  static buttonOn: Color = Color(1.0, 1.0, 1.0, 0.26)
+  static well: Color = Color(0.0, 0.0, 0.0, 0.25)
+  static card: Color = Color(0.17, 0.17, 0.19)
+  static edge: Color = Color(1.0, 1.0, 1.0, 0.14)
+  static screen: Color = Color(0.0, 0.0, 0.0, 0.35)
+  static glyph: Color = Color(0.45, 0.66, 1.0)
+
+  static sidebarWidth: float = 168.0
+  static barHeight: float = 40.0
+  static footHeight: float = 24.0
+  static rowHeight: float = 24.0
+
+  -- The list's columns after the name, which takes what is left.
+  static dateWidth: float = 150.0
+  static sizeWidth: float = 78.0
+  static kindWidth: float = 124.0
+
+  -- Which of the list's columns there is room for beside the name, in
+  -- a folder `width` wide: the kind goes first as the window narrows,
+  -- then the date, then the size. 3 is all of them, 0 the name alone.
+  static fn columns(width: float) -> integer
+    if width <= 0.0 or width >= 560.0 then
+      return 3
+    end
+    if width >= 430.0 then
+      return 2
+    end
+    if width >= 300.0 then
+      return 1
+    end
+    return 0
+  end
+
+  -- One icon and its name, in the icon view.
+  static tileWidth: float = 96.0
+  static tileIcon: float = 52.0
+
+  static fn theme() -> ThemeData
+    return ThemeData(
+      background: Look.window,
+      surface: Look.card,
+      border: Look.edge,
+      text: Look.text,
+      textMuted: Look.dimText,
+      primary: Look.accent,
+      body: TextStyle(Look.text, 13.0)
+    )
+  end
+end

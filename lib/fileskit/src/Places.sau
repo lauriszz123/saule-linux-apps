@@ -1,0 +1,78 @@
+-- The folders a person goes to by name, as a file browser's sidebar
+-- lists them: their own, and the computer's.
+
+from Folder import Folder
+
+export class Place
+  title: string
+  path: string
+  -- "home", "documents", "downloads", "desktop", "computer", "disk" or
+  -- "trash": which picture stands for it.
+  kind: string
+
+  fn init(title: string, path: string, kind: string)
+    self.title = title
+    self.path = path
+    self.kind = kind
+  end
+end
+
+export class Places
+  static fn home() -> string
+    return Os.getenv("HOME") ?? "/"
+  end
+
+  static fn trash() -> string
+    return Folder.join(Places.home(), ".Trash")
+  end
+
+  -- The person's own: their home, and the folders in it that everything
+  -- is filed under. Those are made the first time they are asked for, so
+  -- a new computer has somewhere to put a document.
+  static fn favourites() -> table<Place>
+    local home = Places.home()
+    local out: table<Place> = {Place("Home", home, "home")}
+    local named: table<table<string>> = {
+      {"Documents", "documents"},
+      {"Downloads", "downloads"},
+      {"Desktop", "desktop"},
+    }
+    for pair in named do
+      local path = Folder.join(home, pair[1])
+      if not Os.exists(path) then
+        Os.mkdir(path, true)
+      end
+      if Os.exists(path) then
+        Table.insert(out, Place(pair[1], path, pair[2]))
+      end
+    end
+    return out
+  end
+
+  -- The computer's: everything, the disk things are kept on where there
+  -- is one, and what was thrown away.
+  static fn locations() -> table<Place>
+    local out: table<Place> = {Place("Computer", "/", "computer")}
+    local data = Os.getenv("SAULE_DATA")
+    if data != nil and Os.exists(data!) then
+      Table.insert(out, Place("Data Disk", data!, "disk"))
+    end
+    Table.insert(out, Place("Trash", Places.trash(), "trash"))
+    return out
+  end
+
+  -- `path` as a person reads it: the home as "Home", the rest by name.
+  static fn title(path: string) -> string
+    if path == Places.home() then
+      return "Home"
+    end
+    -- Where drives are mounted is not a place a person goes: "Drives".
+    if path == "/run/media" then
+      return "Drives"
+    end
+    if path == Places.trash() then
+      return "Trash"
+    end
+    return Folder.nameOf(path)
+  end
+end

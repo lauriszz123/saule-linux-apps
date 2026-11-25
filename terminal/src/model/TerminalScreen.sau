@@ -1,0 +1,615 @@
+-- The terminal's screen: rows of cells, each a character and how it is
+-- drawn, a cursor, and the lines that have scrolled off the top.
+--
+-- A cell's look is one number: its foreground colour (0 to 255, or 256
+-- for the terminal's own), its background the same, and its style, as
+-- `fg + bg * 512 + style * 262144`. One number a cell, so a line is two
+-- plain tables and scrolling copies nothing.
+--
+-- Rows and columns are counted from 0 here, as the arithmetic wants;
+-- the escape sequences count from 1, and `Parser` converts.
+
+from Colours import Colours
+
+export class Style
+  static bold: integer = 1
+  static inverse: integer = 2
+  static underline: integer = 4
+  static dim: integer = 8
+
+  -- The look of a cell nothing has been written in.
+  static plain: integer = 256 + 256 * 512
+
+  static fn pack(fg: integer, bg: integer, style: integer) -> integer
+    return fg + bg * 512 + style * 262144
+  end
+
+  static fn fg(look: integer) -> integer
+    return look % 512
+  end
+
+  static fn bg(look: integer) -> integer
+    return Math.floor(look / 512) % 512
+  end
+
+  static fn style(look: integer) -> integer
+    return Math.floor(look / 262144)
+  end
+
+  static fn has(look: integer, flag: integer) -> boolean
+    return Math.floor(Style.style(look) / flag) % 2 == 1
+  end
+end
+
+-- A stretch of a line drawn alike: where it starts, its characters, and
+-- its look.
+export class Run
+  column: integer
+  -- How many cells it covers.
+  cells: integer
+  text: string
+  look: integer
+  -- Nothing but spaces: only its background is drawn.
+  blank: boolean
+
+  fn init(
+    column: integer,
+    cells: integer,
+    text: string,
+    look: integer,
+    blank: boolean
+  )
+    self.column = column
+    self.cells = cells
+    self.text = text
+    self.look = look
+    self.blank = blank
+  end
+end
+
+export class Line
+  chars: table<string>
+  looks: table<integer>
+
+  -- The line as runs, worked out when it is first drawn and kept until
+  -- it changes: most lines on the screen are the same from one frame
+  -- to the next.
+  runs: table<Run>?
+
+  fn init(columns: integer, look: integer)
+    local chars: table<string> = {}
+    local looks: table<integer> = {}
+    for i = 1, columns do
+      chars[i] = " "
+      looks[i] = look
+    end
+    self.chars = chars
+    self.looks = looks
+    self.runs = nil
+  end
+
+  -- Make the line `columns` wide: cut short, or filled out with blanks.
+  fn fit(columns: integer) -> nil
+    while #self.chars > columns do
+      Table.remove(self.chars)
+      Table.remove(self.looks)
+    end
+    while #self.chars < columns do
+      Table.insert(self.chars, " ")
+      Table.insert(self.looks, Style.plain)
+    end
+    self.runs = nil
+  end
+
+  -- The line's text, without the blanks at its end.
+  fn text() -> string
+    local last = #self.chars
+    while last > 0 and self.chars[last] == " " do
+      last -= 1
+    end
+    if last == 0 then
+      return ""
+    end
+    return Table.concat(self.chars, "", 1, last)
+  end
+
+  fn drawn() -> table<Run>
+    if self.runs != nil then
+      return self.runs!
+    end
+    local runs: table<Run> = {}
+    local count = #self.chars
+    local start = 1
+    while start <= count do
+      local look = self.looks[start]
+      local finish = start
+      local blank = self.chars[start] == " "
+      while finish < count and self.looks[finish + 1] == look do
+        finish += 1
+        if self.chars[finish] != " " then
+          blank = false
+        end
+      end
+      local text = ""
+      if not blank then
+        text = Table.concat(self.chars, "", start, finish)
+      end
+      Table.insert(runs, Run(start - 1, finish - start + 1, text, look, blank))
+      start = finish + 1
+    end
+    self.runs = runs
+    return runs
+  end
+end
+
+export class TerminalScreen
+  columns: integer
+  rows: integer
+  lines: table<Line>
+
+  -- What has scrolled off the top, oldest first, and how many of those
+  -- lines the window is scrolled back by (0: showing the screen itself).
+  history: table<Line>
+  scrolled: integer
+  static keep: integer = 3000
+
+  -- The cursor, and whether the next character starts a new line: the
+  -- last column is written without moving on, until something follows.
+  x: integer
+  y: integer
+  wrapNext: boolean
+  cursorShown: boolean
+
+  -- The look new characters get.
+  look: integer
+
+  -- The rows that scroll: all of them, unless a program set others.
+  top: integer
+  bottom: integer
+
+  -- The cursor a program asked to have kept.
+  local savedX: integer
+  local savedY: integer
+  local savedLook: integer
+
+  -- A program using the whole screen (an editor, a pager) has its own,
+  -- with no history; the shell's is kept beneath and comes back.
+  alternate: boolean
+  local main: table<Line>
+
+  -- The arrow keys send application sequences; pasted text is wrapped
+  -- so a program can tell it from typing.
+  applicationCursor: boolean
+  bracketedPaste: boolean
+
+  -- What the program asked the window to be called, or "".
+  title: string
+
+  -- Something the window shows changed since it was last drawn.
+  changed: boolean
+
+  fn init(columns: integer, rows: integer)
+    self.columns = columns
+    self.rows = rows
+    self.lines = {}
+    for i = 1, rows do
+      Table.insert(self.lines, Line(columns, Style.plain))
+    end
+    self.history = {}
+    self.scrolled = 0
+    self.x = 0
+    self.y = 0
+    self.wrapNext = false
+    self.cursorShown = true
+    self.look = Style.plain
+    self.top = 0
+    self.bottom = rows - 1
+    self.savedX = 0
+    self.savedY = 0
+    self.savedLook = Style.plain
+    self.alternate = false
+    self.main = {}
+    self.applicationCursor = false
+    self.bracketedPaste = false
+    self.title = ""
+    self.changed = true
+  end
+
+  -- The look of a cell erased now: blank, on the background in use.
+  local fn erased() -> integer
+    return Style.pack(Colours.own, Style.bg(self.look), 0)
+  end
+
+  -- Write one character where the cursor is.
+  fn put(char: string) -> nil
+    if self.wrapNext then
+      self.x = 0
+      self.index()
+      self.wrapNext = false
+    end
+    local line = self.lines[self.y + 1]
+    line.chars[self.x + 1] = char
+    line.looks[self.x + 1] = self.look
+    line.runs = nil
+    if self.x >= self.columns - 1 then
+      self.wrapNext = true
+    else
+      self.x += 1
+    end
+    self.changed = true
+  end
+
+  -- Down a line, scrolling when at the foot of the rows that scroll.
+  fn index() -> nil
+    if self.y == self.bottom then
+      self.scrollUp(1)
+    elseif self.y < self.rows - 1 then
+      self.y += 1
+    end
+    self.changed = true
+  end
+
+  -- Up a line, scrolling the other way at the top.
+  fn reverseIndex() -> nil
+    if self.y == self.top then
+      self.scrollDown(1)
+    elseif self.y > 0 then
+      self.y -= 1
+    end
+    self.changed = true
+  end
+
+  fn carriageReturn() -> nil
+    self.x = 0
+    self.wrapNext = false
+    self.changed = true
+  end
+
+  fn backspace() -> nil
+    if self.x > 0 then
+      self.x -= 1
+    end
+    self.wrapNext = false
+    self.changed = true
+  end
+
+  -- To the next stop, every eight columns.
+  fn tab() -> nil
+    local next = (Math.floor(self.x / 8) + 1) * 8
+    self.x = Math.min(next, self.columns - 1)
+    self.changed = true
+  end
+
+  fn moveTo(x: integer, y: integer) -> nil
+    self.x = Math.clamp(x, 0, self.columns - 1)
+    self.y = Math.clamp(y, 0, self.rows - 1)
+    self.wrapNext = false
+    self.changed = true
+  end
+
+  fn moveBy(dx: integer, dy: integer) -> nil
+    self.moveTo(self.x + dx, self.y + dy)
+  end
+
+  -- The rows that scroll move up by `count`: the top ones leave (into
+  -- the history, when they are the screen's own top), blank ones come
+  -- in at the foot.
+  fn scrollUp(count: integer) -> nil
+    for i = 1, Math.min(count, self.bottom - self.top + 1) do
+      local gone = Table.remove(self.lines, self.top + 1)
+      if self.top == 0 and not self.alternate and gone != nil then
+        Table.insert(self.history, gone!)
+        -- Somebody reading back stays where they are.
+        if self.scrolled > 0 then
+          self.scrolled += 1
+        end
+      end
+      Table.insert(
+        self.lines,
+        Line(self.columns, self.erased()),
+        self.bottom + 1
+      )
+    end
+    -- Trimmed a few hundred at a time, not one for every line.
+    if #self.history > TerminalScreen.keep + 400 then
+      self.history = Table.slice(
+        self.history,
+        #self.history - TerminalScreen.keep + 1,
+        #self.history
+      )
+      self.scrolled = Math.min(self.scrolled, #self.history)
+    end
+    self.changed = true
+  end
+
+  fn scrollDown(count: integer) -> nil
+    for i = 1, Math.min(count, self.bottom - self.top + 1) do
+      Table.remove(self.lines, self.bottom + 1)
+      Table.insert(self.lines, Line(self.columns, self.erased()), self.top + 1)
+    end
+    self.changed = true
+  end
+
+  -- Blank the cells `first` to `last` of row `y`, counted from 0.
+  local fn blank(y: integer, first: integer, last: integer) -> nil
+    local line = self.lines[y + 1]
+    local look = self.erased()
+    for x = Math.max(first, 0), Math.min(last, self.columns - 1) do
+      line.chars[x + 1] = " "
+      line.looks[x + 1] = look
+    end
+    line.runs = nil
+  end
+
+  -- 0: from the cursor to the end of its line; 1: from the line's start
+  -- to the cursor; 2: the whole line.
+  fn eraseInLine(mode: integer) -> nil
+    if mode == 0 then
+      self.blank(self.y, self.x, self.columns - 1)
+    elseif mode == 1 then
+      self.blank(self.y, 0, self.x)
+    else
+      self.blank(self.y, 0, self.columns - 1)
+    end
+    self.changed = true
+  end
+
+  -- 0: from the cursor to the end of the screen; 1: from its start to
+  -- the cursor; 2: all of it; 3: all of it and the history.
+  fn eraseInDisplay(mode: integer) -> nil
+    if mode == 0 then
+      self.eraseInLine(0)
+      for y = self.y + 1, self.rows - 1 do
+        self.blank(y, 0, self.columns - 1)
+      end
+    elseif mode == 1 then
+      self.eraseInLine(1)
+      for y = 0, self.y - 1 do
+        self.blank(y, 0, self.columns - 1)
+      end
+    else
+      for y = 0, self.rows - 1 do
+        self.blank(y, 0, self.columns - 1)
+      end
+      if mode == 3 then
+        self.history = {}
+        self.scrolled = 0
+      end
+    end
+    self.changed = true
+  end
+
+  -- Open `count` blank lines at the cursor, pushing the rest down and
+  -- off the foot of the rows that scroll; or close them up again.
+  fn insertLines(count: integer) -> nil
+    if self.y < self.top or self.y > self.bottom then
+      return
+    end
+    for i = 1, Math.min(count, self.bottom - self.y + 1) do
+      Table.remove(self.lines, self.bottom + 1)
+      Table.insert(self.lines, Line(self.columns, self.erased()), self.y + 1)
+    end
+    self.changed = true
+  end
+
+  fn deleteLines(count: integer) -> nil
+    if self.y < self.top or self.y > self.bottom then
+      return
+    end
+    for i = 1, Math.min(count, self.bottom - self.y + 1) do
+      Table.remove(self.lines, self.y + 1)
+      Table.insert(
+        self.lines,
+        Line(self.columns, self.erased()),
+        self.bottom + 1
+      )
+    end
+    self.changed = true
+  end
+
+  -- Open `count` blank cells at the cursor, or close them up; the rest
+  -- of the line moves.
+  fn insertChars(count: integer) -> nil
+    local line = self.lines[self.y + 1]
+    local look = self.erased()
+    for i = 1, Math.min(count, self.columns - self.x) do
+      Table.remove(line.chars)
+      Table.remove(line.looks)
+      Table.insert(line.chars, " ", self.x + 1)
+      Table.insert(line.looks, look, self.x + 1)
+    end
+    line.runs = nil
+    self.changed = true
+  end
+
+  fn deleteChars(count: integer) -> nil
+    local line = self.lines[self.y + 1]
+    local look = self.erased()
+    for i = 1, Math.min(count, self.columns - self.x) do
+      Table.remove(line.chars, self.x + 1)
+      Table.remove(line.looks, self.x + 1)
+      Table.insert(line.chars, " ")
+      Table.insert(line.looks, look)
+    end
+    line.runs = nil
+    self.changed = true
+  end
+
+  fn eraseChars(count: integer) -> nil
+    self.blank(self.y, self.x, self.x + Math.max(count, 1) - 1)
+    self.changed = true
+  end
+
+  -- The rows that scroll are `top` to `bottom`; anything that makes no
+  -- sense is all of them.
+  fn setRegion(top: integer, bottom: integer) -> nil
+    if top < 0 or bottom >= self.rows or top >= bottom then
+      self.top = 0
+      self.bottom = self.rows - 1
+    else
+      self.top = top
+      self.bottom = bottom
+    end
+    self.moveTo(0, 0)
+  end
+
+  fn saveCursor() -> nil
+    self.savedX = self.x
+    self.savedY = self.y
+    self.savedLook = self.look
+  end
+
+  fn restoreCursor() -> nil
+    self.look = self.savedLook
+    self.moveTo(self.savedX, self.savedY)
+  end
+
+  -- Give a program a screen of its own, or the shell's back.
+  fn useAlternate(on: boolean) -> nil
+    if on == self.alternate then
+      return
+    end
+    self.alternate = on
+    if on then
+      self.main = self.lines
+      self.lines = {}
+      for i = 1, self.rows do
+        Table.insert(self.lines, Line(self.columns, Style.plain))
+      end
+    else
+      self.lines = self.main
+      self.main = {}
+      -- The window may have changed size meanwhile.
+      self.fit(self.lines)
+    end
+    self.scrolled = 0
+    self.top = 0
+    self.bottom = self.rows - 1
+    self.changed = true
+  end
+
+  -- As a terminal just turned on.
+  fn reset() -> nil
+    self.useAlternate(false)
+    self.look = Style.plain
+    self.top = 0
+    self.bottom = self.rows - 1
+    self.cursorShown = true
+    self.applicationCursor = false
+    self.bracketedPaste = false
+    self.eraseInDisplay(2)
+    self.moveTo(0, 0)
+  end
+
+  -- Make `lines` this screen's size: lines of the right width, and the
+  -- right number of them, blank ones added at the foot.
+  local fn fit(lines: table<Line>) -> nil
+    while #lines > self.rows do
+      Table.remove(lines, 1)
+    end
+    while #lines < self.rows do
+      Table.insert(lines, Line(self.columns, Style.plain))
+    end
+    for line in lines do
+      if #line.chars != self.columns then
+        line.fit(self.columns)
+      end
+    end
+  end
+
+  -- The window is `columns` by `rows` now. Lines keep what fits; with
+  -- fewer rows the top ones go into the history, so the line the cursor
+  -- is on stays on the screen.
+  fn resize(columns: integer, rows: integer) -> nil
+    if columns == self.columns and rows == self.rows then
+      return
+    end
+    while #self.lines > rows and self.y >= rows do
+      local gone = Table.remove(self.lines, 1)
+      if not self.alternate and gone != nil then
+        Table.insert(self.history, gone!)
+      end
+      self.y -= 1
+    end
+    while #self.lines > rows do
+      Table.remove(self.lines)
+    end
+    self.columns = columns
+    self.rows = rows
+    self.fit(self.lines)
+    for line in self.history do
+      if #line.chars != columns then
+        line.fit(columns)
+      end
+    end
+    self.top = 0
+    self.bottom = rows - 1
+    self.x = Math.clamp(self.x, 0, columns - 1)
+    self.y = Math.clamp(self.y, 0, rows - 1)
+    self.wrapNext = false
+    self.scrolled = Math.min(self.scrolled, #self.history)
+    self.changed = true
+  end
+
+  -- Scroll the window back through the history by `lines` (negative:
+  -- forward again).
+  fn scrollBack(lines: integer) -> nil
+    if self.alternate then
+      return
+    end
+    local next = Math.clamp(self.scrolled + lines, 0, #self.history)
+    if next != self.scrolled then
+      self.scrolled = next
+      self.changed = true
+    end
+  end
+
+  -- The line the window shows in row `row` (from 0), which is from the
+  -- history when scrolled back.
+  fn shown(row: integer) -> Line
+    local at = #self.history - self.scrolled + row
+    if at < #self.history then
+      return self.history[at + 1]
+    end
+    return self.lines[at - #self.history + 1]
+  end
+
+  -- The text from one cell to another, each a line counted from the
+  -- oldest in the history and a column; lines are joined with new
+  -- lines, without the blanks at their ends.
+  fn textBetween(
+    fromLine: integer,
+    fromColumn: integer,
+    toLine: integer,
+    toColumn: integer
+  ) -> string
+    local parts: table<string> = {}
+    for at = fromLine, toLine do
+      local line: Line? = nil
+      if at < #self.history then
+        line = self.history[at + 1]
+      elseif at - #self.history < #self.lines then
+        line = self.lines[at - #self.history + 1]
+      end
+      if line != nil then
+        local first = 1
+        local last = #line!.chars
+        if at == fromLine then
+          first = fromColumn + 1
+        end
+        if at == toLine then
+          last = Math.min(toColumn + 1, last)
+        end
+        local piece = ""
+        if first <= last then
+          piece = Table.concat(line!.chars, "", first, last)
+        end
+        if at != toLine then
+          piece = String.trimEnd(piece)
+        end
+        Table.insert(parts, piece)
+      end
+    end
+    return String.join("\n", parts)
+  end
+end

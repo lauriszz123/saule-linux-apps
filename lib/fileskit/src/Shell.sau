@@ -1,0 +1,32 @@
+-- Running the system's own tools, with file names passed safely.
+
+export class Shell
+  -- `text` as one word of a shell command, whatever is in it: in single
+  -- quotes, with any single quote of its own closed, escaped and opened
+  -- again.
+  static fn quote(text: string) -> string
+    return "'" .. String.replace(text, "'", "'\\''") .. "'"
+  end
+
+  -- Run `command`. Its output when it ended well, else nil.
+  static fn output(command: string) -> string?
+    local code, out, err = Os.capture(command)
+    if code != 0 then
+      return nil
+    end
+    return out
+  end
+
+  -- Run `command`. "" when it ended well, else what it said was wrong.
+  static fn run(command: string) -> string
+    local code, out, err = Os.capture(command)
+    if code == 0 then
+      return ""
+    end
+    local why = String.trim(err)
+    if why == "" then
+      why = "It could not be done."
+    end
+    return why
+  end
+end

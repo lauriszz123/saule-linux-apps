@@ -1,0 +1,184 @@
+-- The screen of cells, drawn: each line as its runs of like cells, a
+-- background where one was asked for, the text over it, then what the
+-- mouse marked and the cursor.
+--
+-- Drawn in the screen's own pixels (the window's scaling undone for the
+-- length of the paint), with the typeface loaded at that size: text at
+-- the size it was made for, and cells on whole pixels.
+--
+-- Its size in cells follows the window's: laying it out tells the
+-- session, which tells the program.
+
+import shine
+from uikit import *
+from model import Colours, Run, TerminalScreen, Session, Style
+from Type import Type
+from Selection import Selection
+
+export class TerminalCanvas extends View
+  session: Session
+  selection: Selection
+  focused: boolean
+
+  -- Room between the window's edge and the cells, in points.
+  static pad: float = 6.0
+
+  fn init(
+    session: Session,
+    selection: Selection,
+    focused: boolean,
+    key: string? = nil
+  )
+    self.super(key)
+    self.session = session
+    self.selection = selection
+    self.focused = focused
+  end
+
+  fn layout(el: Element, constraints: Constraints) -> Size
+    local size = constraints.biggest()
+    Type.face()
+    local scale = Display.scale()
+    local room = TerminalCanvas.pad * 2.0
+    local columns = Math.floor((size.width - room) * scale / Type.cellWidth)
+    local rows = Math.floor((size.height - room) * scale / Type.cellHeight)
+    self.session.resize(Math.max(columns, 20), Math.max(rows, 4))
+    return size
+  end
+
+  -- The cell under a point of this view, as a row of the window and a
+  -- column, both kept to the screen.
+  static fn cellAt(screen: TerminalScreen, x: float, y: float) -> (integer, integer)
+    local scale = Display.scale()
+    local column = Math.floor((x - TerminalCanvas.pad) * scale / Type.cellWidth)
+    local row = Math.floor((y - TerminalCanvas.pad) * scale / Type.cellHeight)
+    return Math.clamp(row, 0, screen.rows - 1), Math.clamp(
+      column,
+      0,
+      screen.columns - 1
+    )
+  end
+
+  fn paint(el: Element, x: float, y: float) -> nil
+    local screen = self.session.screen
+    local font = Type.face()
+    local scale = Display.scale()
+    local cw = Type.cellWidth
+    local ch = Type.cellHeight
+    local ox = Math.floor((x + TerminalCanvas.pad) * scale) as float
+    local oy = Math.floor((y + TerminalCanvas.pad) * scale) as float
+
+    Graphics.push()
+    Graphics.scale(1.0 / scale, 1.0 / scale)
+    Graphics.setFont(font)
+
+    for row = 0, screen.rows - 1 do
+      local top = oy + (row as float) * ch
+      for run in screen.shown(row).drawn() do
+        TerminalCanvas.run(run, ox + (run.column as float) * cw, top, cw, ch)
+      end
+    end
+
+    self.marked(screen, ox, oy, cw, ch)
+    if screen.cursorShown and screen.scrolled == 0 then
+      self.block(screen, ox, oy, cw, ch)
+    end
+
+    Graphics.pop()
+    Graphics.setFont()
+    screen.changed = false
+  end
+
+  -- One run: its background if it has one, then its text.
+  static fn run(run: Run, left: float, top: float, cw: float, ch: float) -> nil
+    local look = run.look
+    local fg = Style.fg(look)
+    local bg = Style.bg(look)
+    local bold = Style.has(look, Style.bold)
+    local inverse = Style.has(look, Style.inverse)
+
+    local ink = Colours.foreground
+    if fg != Colours.own then
+      if bold and fg < 8 then
+        ink = Colours.at(fg + 8)
+      else
+        ink = Colours.at(fg)
+      end
+    elseif bold then
+      ink = Colours.bold
+    end
+    local paper: Color? = nil
+    if bg != Colours.own then
+      paper = Colours.at(bg)
+    end
+    if inverse then
+      local was = ink
+      ink = paper ?? Colours.background
+      paper = was
+    end
+
+    local width = (run.cells as float) * cw
+    if paper != nil then
+      paper!.apply()
+      Graphics.rectangle("fill", left, top, width, ch)
+    end
+    if run.blank then
+      return
+    end
+    ink.apply()
+    Graphics.print(run.text, left, top)
+    if Style.has(look, Style.underline) then
+      Graphics.rectangle("fill", left, top + ch - 2.0, width, 1.0)
+    end
+  end
+
+  -- What the mouse marked, as a wash over each row it touches.
+  local fn marked(screen: TerminalScreen, ox: float, oy: float, cw: float, ch: float) -> nil
+    local selection = self.selection
+    if not selection.any() then
+      return
+    end
+    local firstLine, firstColumn, lastLine, lastColumn = selection.ends()
+    local topLine = #screen.history - screen.scrolled
+    Colours.selection.apply()
+    for row = 0, screen.rows - 1 do
+      local line = topLine + row
+      if line >= firstLine and line <= lastLine then
+        local first = 0
+        local last = screen.columns - 1
+        if line == firstLine then
+          first = firstColumn
+        end
+        if line == lastLine then
+          last = lastColumn
+        end
+        Graphics.rectangle(
+          "fill",
+          ox + (first as float) * cw,
+          oy + (row as float) * ch,
+          ((last - first + 1) as float) * cw,
+          ch
+        )
+      end
+    end
+  end
+
+  -- The cursor: a block with the character under it drawn in the
+  -- background's colour; an outline when the window hasn't the keyboard.
+  local fn block(screen: TerminalScreen, ox: float, oy: float, cw: float, ch: float) -> nil
+    local left = ox + (screen.x as float) * cw
+    local top = oy + (screen.y as float) * ch
+    Colours.cursor.apply()
+    if not self.focused then
+      Graphics.setLineWidth(1.0)
+      Graphics.rectangle("line", left + 0.5, top + 0.5, cw - 1.0, ch - 1.0)
+      return
+    end
+    Graphics.rectangle("fill", left, top, cw, ch)
+    local char = screen.lines[screen.y + 1].chars[screen.x + 1] ?? " "
+    if char != " " then
+      Colours.background.apply()
+      Graphics.print(char, left, top)
+    end
+  end
+end

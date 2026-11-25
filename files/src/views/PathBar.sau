@@ -1,0 +1,88 @@
+-- The foot of the window: the way to the folder, each step of it a
+-- place to go, and at the right how many things are in it and how much
+-- room its disk has left. Something that just went wrong is said here
+-- instead, for a few seconds.
+--
+--   Computer › data › home › display › Documents      12 items, 230 GB available
+
+from uikit import *
+from "fileskit" import Folder, Places, Said
+from model import Browser
+from Look import Look
+
+export class PathBar extends View
+  browser: Browser
+  refresh: Action
+  notice: string
+
+  fn init(
+    browser: Browser,
+    notice: string,
+    refresh: Action,
+    key: string? = nil
+  )
+    self.super(key)
+    self.browser = browser
+    self.notice = notice
+    self.refresh = refresh
+  end
+
+  fn body(context: BuildContext) -> View
+    local browser = self.browser
+    local refresh = self.refresh
+    local parts: table<View> = {}
+
+    if self.notice != "" then
+      local said = Text(self.notice).font(11.0).foregroundStyle(Look.warning)
+      Table.insert(parts, said.lineLimit(1))
+    else
+      -- From the top down: "/", then each folder on the way.
+      local steps: table<string> = {}
+      local at = browser.folder
+      while at != "/" do
+        Table.insert(steps, at, 1)
+        at = Folder.parent(at)
+      end
+      Table.insert(steps, "/", 1)
+      -- A long way is shown by its end: the last five steps.
+      local first = Math.max(#steps - 4, 1)
+      for i = first, #steps do
+        local path = steps[i]
+        if i > first then
+          local mark = Text("›").font(11.0).foregroundStyle(Look.dimText)
+          Table.insert(parts, mark)
+        end
+        local ink = Look.dimText
+        if i == #steps then
+          ink = Look.text
+        end
+        local name = Text(Places.title(path)).font(11.0).foregroundStyle(ink)
+        local go = fn()
+          browser.go(path)
+          refresh()
+        end
+        Table.insert(parts, GestureArea(child: name.lineLimit(1), onTap: go))
+      end
+    end
+
+    Table.insert(parts, Spacer())
+    local count = Said.items(#browser.entries)
+    if browser.available >= 0 then
+      count = count .. ", " .. Said.size(browser.available) .. " available"
+    end
+    if not browser.readable then
+      count = "This folder can't be looked in"
+    end
+    Table.insert(parts, Text(count).font(11.0).foregroundStyle(Look.dimText))
+
+    local row = HStack(
+      alignment: StackAlignment.Center,
+      spacing: 5.0,
+      children: parts
+    )
+    local inset = EdgeInsets.symmetric(horizontal: 10.0)
+    return row.padding(insets: inset).frame(height: Look.footHeight).background(
+      Look.bar
+    )
+  end
+end

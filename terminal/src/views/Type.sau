@@ -1,0 +1,104 @@
+-- The terminal's typeface: one whose characters are all the same width,
+-- so that a screen of them is a grid. Found among the system's fonts
+-- (apps ship none), and loaded at the screen's own density, so letters
+-- are sharp on a screen that packs two pixels to a point.
+
+import shine
+from uikit import Display
+
+export class Type
+  -- In points: 13 unless another was chosen, which is kept in
+  -- `~/.config/saule/terminal.conf`.
+  static size: float = 13.0
+  static smallest: float = 9.0
+  static largest: float = 26.0
+
+  static local loadedSize: float = 0.0
+
+  static fn settingsPath() -> string
+    local home = Os.getenv("HOME") ?? "."
+    local config = Os.getenv("XDG_CONFIG_HOME") ?? (home .. "/.config")
+    return config .. "/saule/terminal.conf"
+  end
+
+  -- Read the size kept, as the app starts.
+  static fn restore() -> nil
+    local file = Io.open(Type.settingsPath(), IoMode.Read)
+    if file == nil then
+      return
+    end
+    local text = file!.read("a") ?? ""
+    file!.close()
+    for line in String.split(text, "\n") do
+      local at = String.indexOf(line, "=")
+      if at != nil and String.trim(String.sub(line, 1, at! - 1)) == "size" then
+        local size = (String.trim(String.sub(line, at! + 1)) as float?) ?? Type.size
+        Type.size = Math.clamp(size, Type.smallest, Type.largest)
+      end
+    end
+  end
+
+  -- Make the text larger or smaller by `by` points, and keep it.
+  static fn resize(by: float) -> nil
+    Type.size = Math.clamp(Type.size + by, Type.smallest, Type.largest)
+    local path = Type.settingsPath()
+    local parts = String.split(path, "/")
+    Table.remove(parts)
+    Os.mkdir(String.join("/", parts), true)
+    local file = Io.open(path, IoMode.Write)
+    if file != nil then
+      file!.write("size = " .. tostring(Type.size) .. "\n")
+      file!.close()
+    end
+  end
+
+  -- The first of these there is. With none of them, the system's own
+  -- face is used: readable, though its columns don't line up.
+  static local faces: table<string> = {
+    "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+    "/usr/share/fonts/TTF/DejaVuSansMono.ttf",
+    "/usr/share/fonts/dejavu/DejaVuSansMono.ttf",
+    "/usr/share/fonts/truetype/liberation/LiberationMono-Regular.ttf",
+    "/usr/share/fonts/liberation-mono/LiberationMono-Regular.ttf",
+    "/usr/share/fonts/truetype/ubuntu/UbuntuMono-R.ttf",
+    "/System/Library/Fonts/Monaco.ttf",
+    "/System/Library/Fonts/Supplemental/Courier New.ttf",
+    "C:\\Windows\\Fonts\\consola.ttf",
+    "C:\\Windows\\Fonts\\cour.ttf",
+  }
+
+  static local font: Font? = nil
+  static local loadedFor: float = 0.0
+
+  -- One cell's width and height, in the screen's own pixels.
+  static cellWidth: float = 8.0
+  static cellHeight: float = 16.0
+
+  -- The face, at the screen's density as it is now.
+  static fn face() -> Font
+    local scale = Display.scale()
+    if Type.font != nil and Type.loadedFor == scale and Type.loadedSize == Type.size then
+      return Type.font!
+    end
+    local physical = Type.size * scale
+    local loaded: Font? = nil
+    for path in Type.faces do
+      if loaded == nil and Os.exists(path) then
+        try
+          loaded = Graphics.newFont(physical, path)
+        catch e: string
+          loaded = nil
+        end
+      end
+    end
+    if loaded == nil then
+      loaded = Graphics.newFont(physical)
+    end
+    Type.font = loaded
+    Type.loadedFor = scale
+    Type.loadedSize = Type.size
+    Type.cellWidth = Math.max(loaded!.getWidth("M"), 1.0)
+    Type.cellHeight = Math.max(loaded!.getHeight(), 1.0)
+    return loaded!
+  end
+end

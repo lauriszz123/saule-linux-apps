@@ -1,0 +1,106 @@
+-- The sidebar: the places a person goes to by name, under two headings
+-- as a Mac's Finder has them. The one the window is in is lit.
+
+from uikit import *
+from "fileskit" import Drive, Drives, FileIcon, Place, Places
+from model import Browser
+from Look import Look
+
+export class PlaceList extends View
+  browser: Browser
+  refresh: Action
+
+  fn init(browser: Browser, refresh: Action, key: string? = nil)
+    self.super(key)
+    self.browser = browser
+    self.refresh = refresh
+  end
+
+  fn body(context: BuildContext) -> View
+    local rows: table<View> = {PlaceList.heading("Favourites")}
+    for place in Places.favourites() do
+      Table.insert(rows, self.row(place))
+    end
+    Table.insert(rows, Spacer().frame(height: 10.0))
+    Table.insert(rows, PlaceList.heading("Locations"))
+    for place in Places.locations() do
+      Table.insert(rows, self.row(place))
+    end
+    -- What is plugged in, each with the way to let go of it.
+    for drive in Drives.list() do
+      Table.insert(rows, self.drive(drive))
+    end
+
+    local fill = StackAlignment.Fill
+    local list = VStack(alignment: fill, spacing: 1.0, children: rows)
+    local inset = EdgeInsets.symmetric(horizontal: 8.0, vertical: 10.0)
+    local scroll = ScrollView(child: list.padding(insets: inset))
+    return scroll.background(Look.sidebar)
+  end
+
+  static fn heading(title: string) -> View
+    local text = Text(title).font(11.0).foregroundStyle(Look.dimText)
+    return text.padding(insets: EdgeInsets.only(left: 6.0, bottom: 3.0))
+  end
+
+  -- A drive: its name goes to it, and the mark at its right ejects it.
+  local fn drive(drive: Drive) -> View
+    local browser = self.browser
+    local refresh = self.refresh
+    local fill: Color? = nil
+    if browser.folder == drive.path or String.starts(browser.folder, drive.path .. "/") then
+      fill = Look.place
+    end
+    local go = fn()
+      browser.go(drive.path)
+      refresh()
+    end
+    local eject = fn()
+      -- Out of the drive first: a folder being looked at holds it.
+      if browser.folder == drive.path or String.starts(browser.folder, drive.path .. "/") then
+        browser.go(Places.home())
+      end
+      if Drives.eject(drive) then
+        browser.notice = "“" .. drive.label .. "” can be taken out once it has gone from the list."
+      else
+        browser.notice = "“" .. drive.label .. "” could not be ejected."
+      end
+      refresh()
+    end
+    local name = HStack(alignment: StackAlignment.Center, spacing: 8.0) do
+      FileIcon("disk", Look.glyph).frame(width: 16.0, height: 16.0)
+      Text(drive.label).font(13.0).foregroundStyle(Look.text).lineLimit(1)
+      Spacer()
+    end
+    local mark = Text("⏏").font(12.0).foregroundStyle(Look.dimText)
+    local inset = EdgeInsets.symmetric(horizontal: 6.0, vertical: 4.0)
+    local row = HStack(alignment: StackAlignment.Center, spacing: 4.0) do
+      GestureArea(child: name, onTap: go).expanded()
+      GestureArea(child: mark.padding(insets: EdgeInsets.symmetric(horizontal: 4.0)), onTap: eject)
+    end
+    return row.padding(insets: inset).background(fill, 6.0)
+  end
+
+  local fn row(place: Place) -> View
+    local browser = self.browser
+    local refresh = self.refresh
+    local fill: Color? = nil
+    if browser.folder == place.path then
+      fill = Look.place
+    end
+    local row = HStack(alignment: StackAlignment.Center, spacing: 8.0) do
+      FileIcon(place.kind, Look.glyph).frame(width: 16.0, height: 16.0)
+      Text(place.title).font(13.0).foregroundStyle(Look.text)
+      Spacer()
+    end
+    local inset = EdgeInsets.symmetric(horizontal: 6.0, vertical: 4.0)
+    local go = fn()
+      browser.go(place.path)
+      refresh()
+    end
+    return GestureArea(
+      child: row.padding(insets: inset).background(fill, 6.0),
+      onTap: go
+    )
+  end
+end

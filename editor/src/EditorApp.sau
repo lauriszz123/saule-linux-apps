@@ -1,0 +1,52 @@
+-- Editor as a uikit app: one window, one document.
+
+from uikit import *
+from "wmapi" import WmApp
+from model import Document
+from views import EditorWindow, Look
+
+export class EditorApp extends App
+  document: Document
+
+  fn init()
+    self.super()
+    self.document = Document()
+    local path = Os.args()[1] ?? ""
+    if path != "" then
+      self.document.open(path)
+    end
+    WmApp.describe(
+      "Editor",
+      Project.version,
+      "Plain text in a window.",
+      settings: true
+    )
+
+    -- Asked to close with changes not saved: the window stays, and asks
+    -- whether to save them; its answer closes it.
+    local document = self.document
+    App.onCloseRequest(fn() -> boolean
+      if not document.edited() then
+        return true
+      end
+      local state = EditorWindow.state
+      state.settingsShown = false
+      state.panel.close()
+      state.asking = true
+      state.next = "close"
+      state.stale = true
+      return false
+    end)
+  end
+
+  fn body() -> Scene
+    return WindowGroup(
+      title: "Editor",
+      width: 640,
+      height: 460,
+      background: Look.page
+    ) do
+      EditorWindow(self.document)
+    end
+  end
+end

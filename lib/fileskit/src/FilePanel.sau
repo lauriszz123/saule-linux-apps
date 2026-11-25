@@ -1,0 +1,385 @@
+-- The panel an app asks "which file?" with: to open one, or to say where
+-- one is saved and under what name. As a Mac's sheet, it is shown over
+-- the app's own window, which draws it over everything else it has.
+--
+--     Save As:  [ Shopping list.txt        ]
+--     ‹  Documents            Home · Documents · Desktop
+--     ┌──────────────────────────────────────────────┐
+--     │ 📁 Letters                  Today, 14:05      │
+--     │ 📄 Notes.txt                Yesterday, 09:12  │
+--     └──────────────────────────────────────────────┘
+--     [ Cancel ]                              [ Save ]
+--
+-- `PanelState` is what it knows: the folder it is in, the file chosen,
+-- the name typed. The app keeps one, opens it when it has a question,
+-- and is told the answer: a whole path, or that it was cancelled.
+
+from uikit import *
+from Entry import Entry
+from Folder import Folder
+from Places import Place, Places
+from Said import Said
+from FileOps import FileOps
+from FileIcon import FileIcon
+
+export class PanelState
+  -- Whether the panel is up, and whether it asks where to save rather
+  -- than what to open.
+  shown: boolean
+  saving: boolean
+
+  folder: string
+  entries: table<Entry>
+  -- The path of the row chosen, or "".
+  chosen: string
+  -- The name typed, when saving.
+  name: string
+  -- What could not be done, said under the list; "" when nothing.
+  problem: string
+
+  fn init()
+    self.shown = false
+    self.saving = false
+    self.folder = Places.home()
+    self.entries = {}
+    self.chosen = ""
+    self.name = ""
+    self.problem = ""
+  end
+
+  -- Ask what to open, starting in `folder`.
+  fn askOpen(folder: string) -> nil
+    self.saving = false
+    self.name = ""
+    self.shown = true
+    self.go(folder)
+  end
+
+  -- Ask where to save, starting in `folder` with `name` filled in.
+  fn askSave(folder: string, name: string) -> nil
+    self.saving = true
+    self.name = name
+    self.shown = true
+    self.go(folder)
+  end
+
+  fn close() -> nil
+    self.shown = false
+  end
+
+  -- Show `folder`; one that can't be read shows the home instead.
+  fn go(folder: string) -> nil
+    local listed = Folder.list(folder)
+    if listed == nil then
+      self.folder = Places.home()
+      listed = Folder.list(self.folder)
+    else
+      self.folder = folder
+    end
+    self.entries = listed ?? {}
+    self.chosen = ""
+    self.problem = ""
+    -- Folders first, as a panel that is for finding a place wants them.
+    local folders: table<Entry> = {}
+    local files: table<Entry> = {}
+    for entry in self.entries do
+      if entry.folder then
+        Table.insert(folders, entry)
+      else
+        Table.insert(files, entry)
+      end
+    end
+    for file in files do
+      Table.insert(folders, file)
+    end
+    self.entries = folders
+  end
+
+  fn entry(path: string) -> Entry?
+    for entry in self.entries do
+      if entry.path == path then
+        return entry
+      end
+    end
+    return nil
+  end
+
+  -- What pressing the panel's main button comes to: a folder chosen is
+  -- gone into (nil: the panel stays), and otherwise the answer is the
+  -- file chosen, or the folder and the name typed.
+  fn answer() -> string?
+    local chosen = self.entry(self.chosen)
+    if chosen != nil and chosen!.folder then
+      self.go(chosen!.path)
+      return nil
+    end
+    if self.saving then
+      local name = String.trim(self.name)
+      if not FileOps.valid(name) then
+        self.problem = "Type a name for the file, without a slash in it."
+        return nil
+      end
+      return Folder.join(self.folder, name)
+    end
+    if chosen == nil then
+      return nil
+    end
+    return chosen!.path
+  end
+end
+
+export class FilePanel extends View
+  state: PanelState
+  -- Told the path chosen; the panel has closed.
+  onDone: ValueChanged<string>
+  onCancel: Action
+  -- Build the app's window again: the panel changed.
+  refresh: Action
+
+  static width: float = 520.0
+  static listHeight: float = 220.0
+
+  static card: Color = Color(0.17, 0.17, 0.19)
+  static edge: Color = Color(1.0, 1.0, 1.0, 0.14)
+  static well: Color = Color(0.0, 0.0, 0.0, 0.22)
+  static chosen: Color = Color(0.25, 0.48, 0.90)
+  static text: Color = Color(0.95, 0.95, 0.97)
+  static dim: Color = Color(1.0, 1.0, 1.0, 0.55)
+  static warning: Color = Color(1.0, 0.72, 0.42)
+  static quiet: Color = Color(1.0, 1.0, 1.0, 0.14)
+  static screen: Color = Color(0.0, 0.0, 0.0, 0.35)
+
+  fn init(
+    state: PanelState,
+    onDone: ValueChanged<string>,
+    onCancel: Action,
+    refresh: Action,
+    key: string? = nil
+  )
+    self.super(key)
+    self.state = state
+    self.onDone = onDone
+    self.onCancel = onCancel
+    self.refresh = refresh
+  end
+
+  fn body(context: BuildContext) -> View
+    local state = self.state
+    local refresh = self.refresh
+    local onDone = self.onDone
+    local onCancel = self.onCancel
+
+    local finish = fn()
+      local answer = state.answer()
+      if answer != nil then
+        state.close()
+        onDone(answer!)
+      end
+      refresh()
+    end
+    local cancel = fn()
+      state.close()
+      onCancel()
+      refresh()
+    end
+
+    local items: table<View> = {}
+    if state.saving then
+      Table.insert(items, FilePanel.naming(state, finish, refresh))
+    end
+    Table.insert(items, FilePanel.head(state, refresh))
+    Table.insert(items, FilePanel.list(state, finish, refresh))
+    if state.problem != "" then
+      local said = Text(state.problem).font(11.0)
+      Table.insert(items, said.foregroundStyle(FilePanel.warning))
+    end
+    Table.insert(items, FilePanel.foot(state, finish, cancel))
+
+    local column = VStack(
+      alignment: StackAlignment.Fill,
+      sizing: StackSize.Fit,
+      spacing: 10.0,
+      children: items
+    )
+    local card = column.padding(16.0).background(
+      FilePanel.card,
+      12.0,
+      border: FilePanel.edge
+    )
+    local keys = fn(e: KeyEvent) -> boolean
+      if e.key == "escape" then
+        cancel()
+        return true
+      end
+      return false
+    end
+    -- The window behind is dimmed and takes no press while the panel
+    -- is up.
+    local nothing = fn()
+    end
+    local held = GestureArea(
+      child: card.frame(width: FilePanel.width),
+      onTap: nothing
+    )
+    local over = held.centered().background(FilePanel.screen)
+    local screen = GestureArea(
+      child: over,
+      onTap: nothing,
+      onSecondaryTap: nothing,
+      onScroll: fn(dx: float, dy: float) -> boolean
+        return true
+      end
+    )
+    return Focus(child: screen, modal: true, onKeyDown: keys)
+  end
+
+  -- "Save As:" and the name's field.
+  static fn naming(state: PanelState, finish: Action, refresh: Action) -> View
+    local label = Text("Save As:").font(13.0).foregroundStyle(FilePanel.text)
+    local field = TextField(
+      value: state.name,
+      placeholder: "Name",
+      style: TextStyle(FilePanel.text, 13.0),
+      placeholderStyle: TextStyle(FilePanel.dim, 13.0),
+      background: FilePanel.well,
+      border: FilePanel.edge,
+      focusBorder: FilePanel.chosen,
+      padding: EdgeInsets.symmetric(horizontal: 8.0, vertical: 5.0),
+      radius: 6.0,
+      autofocus: true,
+      onChanged: fn(text: string)
+        state.name = text
+      end,
+      onSubmitted: fn(text: string)
+        state.name = text
+        state.chosen = ""
+        finish()
+      end,
+      key: "name"
+    )
+    return HStack(alignment: StackAlignment.Center, spacing: 10.0) do
+      show(label)
+      field.expanded()
+    end
+  end
+
+  -- The way up, the folder's name, and the places to jump to.
+  static fn head(state: PanelState, refresh: Action) -> View
+    local up = FilePanel.link("‹", fn()
+      state.go(Folder.parent(state.folder))
+      refresh()
+    end, 18.0)
+    local title = Text(Places.title(state.folder)).font(14.0)
+    local parts: table<View> = {up, title.foregroundStyle(FilePanel.text), Spacer()}
+    for place in Places.favourites() do
+      local path = place.path
+      Table.insert(parts, FilePanel.link(place.title, fn()
+        state.go(path)
+        refresh()
+      end, 12.0))
+    end
+    return HStack(
+      alignment: StackAlignment.Center,
+      spacing: 12.0,
+      children: parts
+    )
+  end
+
+  static fn link(title: string, action: Action, size: float) -> View
+    local label = Text(title).font(size).foregroundStyle(FilePanel.dim)
+    local inset = EdgeInsets.symmetric(horizontal: 4.0, vertical: 1.0)
+    return GestureArea(child: label.padding(insets: inset), onTap: action)
+  end
+
+  static fn list(state: PanelState, finish: Action, refresh: Action) -> View
+    local rows: table<View> = {}
+    for entry in state.entries do
+      Table.insert(rows, FilePanel.row(state, entry, finish, refresh))
+    end
+    if #rows == 0 then
+      local none = Text("This folder is empty.").font(12.0)
+      Table.insert(
+        rows,
+        none.foregroundStyle(FilePanel.dim).padding(12.0).centered()
+      )
+    end
+    local fill = StackAlignment.Fill
+    local column = VStack(alignment: fill, spacing: 1.0, children: rows)
+    local scroll = ScrollView(child: column.padding(4.0), key: state.folder)
+    return scroll.frame(height: FilePanel.listHeight).background(
+      FilePanel.well,
+      8.0
+    )
+  end
+
+  -- One row: a click chooses it (and when saving over a file, takes its
+  -- name), a double click goes into a folder or answers with a file.
+  static fn row(
+    state: PanelState,
+    entry: Entry,
+    finish: Action,
+    refresh: Action
+  ) -> View
+    local fill: Color? = nil
+    if entry.path == state.chosen then
+      fill = FilePanel.chosen
+    end
+    local kind = "document"
+    if entry.folder then
+      kind = "folder"
+    end
+    local name = Text(entry.name).font(13.0).foregroundStyle(FilePanel.text)
+    local date = Text(Said.date(entry.modified)).font(11.0)
+    local row = HStack(alignment: StackAlignment.Center, spacing: 8.0) do
+      FileIcon(kind).frame(width: 18.0, height: 18.0)
+      name.lineLimit(1).expanded()
+      date.foregroundStyle(FilePanel.dim)
+    end
+    local inset = EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0)
+    local choose = fn()
+      state.chosen = entry.path
+      if state.saving and not entry.folder then
+        state.name = entry.name
+      end
+      refresh()
+    end
+    return GestureArea(
+      child: row.padding(insets: inset).background(fill, 5.0),
+      onTapDown: choose,
+      onDoubleTapAt: fn(x: float, y: float)
+        state.chosen = entry.path
+        finish()
+      end
+    )
+  end
+
+  static fn foot(state: PanelState, finish: Action, cancel: Action) -> View
+    local title = "Open"
+    local chosen = state.entry(state.chosen)
+    if state.saving and (chosen == nil or not chosen!.folder) then
+      title = "Save"
+    end
+    local ready = state.saving or chosen != nil
+    local inset = EdgeInsets.symmetric(horizontal: 16.0, vertical: 6.0)
+    local back = Button(
+      label: "Cancel",
+      onPressed: cancel,
+      color: FilePanel.quiet,
+      textColor: FilePanel.text,
+      padding: inset
+    )
+    local onward = Button(
+      label: title,
+      onPressed: finish,
+      color: FilePanel.chosen,
+      textColor: FilePanel.text,
+      padding: inset,
+      enabled: ready
+    )
+    return HStack(alignment: StackAlignment.Center, spacing: 10.0) do
+      Spacer()
+      back.frame(width: 90.0)
+      onward.frame(width: 90.0)
+    end
+  end
+end

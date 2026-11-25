@@ -1,0 +1,367 @@
+-- What a program writes, turned into changes to the screen: characters
+-- to show, and the escape sequences between them that move the cursor,
+-- colour what follows, erase, scroll.
+--
+-- The sequences are xterm's, as far as programs in a shell use them: a
+-- shell's line editing, `ls --color`, a pager, an editor, `top`. One it
+-- doesn't know is read to its end and ignored, so it never shows as
+-- stray characters.
+--
+-- Some sequences ask a question (where is the cursor?). The answers
+-- gather in `reply`, for whoever feeds the parser to send back.
+
+from Colours import Colours
+from TerminalScreen import TerminalScreen, Style
+
+export class Parser
+  screen: TerminalScreen
+
+  -- What is to be written back to the program, and then emptied.
+  reply: string
+
+  -- Where in a sequence the last character left off.
+  local state: integer
+  local parameters: string
+  local text: string
+
+  static local ground: integer = 0
+  static local escape: integer = 1
+  static local control: integer = 2
+  static local command: integer = 3
+  static local commandEscape: integer = 4
+  static local charset: integer = 5
+  static local ignored: integer = 6
+
+  -- The longest title or parameter list read: a program gone wrong
+  -- must not fill memory.
+  static local longest: integer = 512
+
+  fn init(screen: TerminalScreen)
+    self.screen = screen
+    self.reply = ""
+    self.state = Parser.ground
+    self.parameters = ""
+    self.text = ""
+  end
+
+  fn feed(data: string) -> nil
+    local screen = self.screen
+    local count = String.len(data)
+    for i = 1, count do
+      local code = String.byte(data, i)!
+      if self.state == Parser.ground then
+        if code >= 32 and code != 127 then
+          screen.put(String.sub(data, i, i))
+        else
+          self.controlCode(code)
+        end
+      else
+        self.inSequence(code, String.sub(data, i, i))
+      end
+    end
+  end
+
+  -- A character below a space: the ones that do something.
+  local fn controlCode(code: integer) -> nil
+    local screen = self.screen
+    if code == 27 then
+      self.state = Parser.escape
+    elseif code == 10 or code == 11 or code == 12 then
+      screen.index()
+    elseif code == 13 then
+      screen.carriageReturn()
+    elseif code == 8 then
+      screen.backspace()
+    elseif code == 9 then
+      screen.tab()
+    end
+  end
+
+  local fn inSequence(code: integer, char: string) -> nil
+    local screen = self.screen
+    local state = self.state
+
+    if state == Parser.escape then
+      self.state = Parser.ground
+      if char == "[" then
+        self.state = Parser.control
+        self.parameters = ""
+      elseif char == "]" then
+        self.state = Parser.command
+        self.text = ""
+      elseif char == "(" or char == ")" or char == "*" or char == "+" then
+        self.state = Parser.charset
+      elseif char == "P" or char == "^" or char == "_" then
+        self.state = Parser.ignored
+      elseif char == "7" then
+        screen.saveCursor()
+      elseif char == "8" then
+        screen.restoreCursor()
+      elseif char == "M" then
+        screen.reverseIndex()
+      elseif char == "D" then
+        screen.index()
+      elseif char == "E" then
+        screen.carriageReturn()
+        screen.index()
+      elseif char == "c" then
+        screen.reset()
+      end
+    elseif state == Parser.control then
+      -- Controls inside a sequence act as they would outside it.
+      if code < 32 then
+        if code == 27 then
+          self.state = Parser.escape
+        else
+          self.controlCode(code)
+          self.state = Parser.control
+        end
+      elseif code >= 64 and code <= 126 then
+        self.state = Parser.ground
+        self.controlSequence(char)
+      elseif String.len(self.parameters) < Parser.longest then
+        self.parameters = self.parameters .. char
+      end
+    elseif state == Parser.command then
+      -- Ended by a bell, or by Escape and a backslash.
+      if code == 7 then
+        self.state = Parser.ground
+        self.operatingCommand()
+      elseif code == 27 then
+        self.state = Parser.commandEscape
+      elseif String.len(self.text) < Parser.longest then
+        self.text = self.text .. char
+      end
+    elseif state == Parser.commandEscape then
+      self.state = Parser.ground
+      self.operatingCommand()
+      if char != "\\" then
+        self.state = Parser.escape
+        self.inSequence(code, char)
+      end
+    elseif state == Parser.charset then
+      -- Which character set: one more character, of no use here.
+      self.state = Parser.ground
+    elseif state == Parser.ignored then
+      if code == 7 then
+        self.state = Parser.ground
+      elseif code == 27 then
+        self.state = Parser.escape
+      end
+    end
+  end
+
+  -- "0;title" and "2;title" name the window.
+  local fn operatingCommand() -> nil
+    local text = self.text
+    if String.starts(text, "0;") or String.starts(text, "2;") then
+      self.screen.title = String.sub(text, 3)
+      self.screen.changed = true
+    end
+  end
+
+  -- The numbers of a sequence, between its semicolons; one left out
+  -- is 0.
+  local fn numbers(text: string) -> table<integer>
+    local out: table<integer> = {}
+    for part in String.split(text, ";") do
+      -- "38:2:r:g:b" is also written with colons.
+      for piece in String.split(part, ":") do
+        Table.insert(out, (piece as integer?) ?? 0)
+      end
+    end
+    return out
+  end
+
+  -- A sequence that began Escape [ and ends in `final`.
+  local fn controlSequence(final: string) -> nil
+    local screen = self.screen
+    local text = self.parameters
+    local private = String.starts(text, "?")
+    if private or String.starts(text, ">") or String.starts(text, "=") then
+      text = String.sub(text, 2)
+    end
+    -- A space or the like before the final letter: a cursor's shape and
+    -- such, none of which is acted on.
+    if String.contains(text, " ") or String.contains(text, "!") or String.contains(text, "$") then
+      return
+    end
+    local n = self.numbers(text)
+    local first = n[1] ?? 0
+    local count = Math.max(first, 1)
+
+    if final == "m" then
+      if not private then
+        self.looks(n)
+      end
+    elseif final == "H" or final == "f" then
+      screen.moveTo(Math.max(n[2] ?? 1, 1) - 1, count - 1)
+    elseif final == "A" then
+      screen.moveBy(0, -count)
+    elseif final == "B" or final == "e" then
+      screen.moveBy(0, count)
+    elseif final == "C" or final == "a" then
+      screen.moveBy(count, 0)
+    elseif final == "D" then
+      screen.moveBy(-count, 0)
+    elseif final == "E" then
+      screen.moveTo(0, screen.y + count)
+    elseif final == "F" then
+      screen.moveTo(0, screen.y - count)
+    elseif final == "G" or final == "`" then
+      screen.moveTo(count - 1, screen.y)
+    elseif final == "d" then
+      screen.moveTo(screen.x, count - 1)
+    elseif final == "J" then
+      screen.eraseInDisplay(first)
+    elseif final == "K" then
+      screen.eraseInLine(first)
+    elseif final == "L" then
+      screen.insertLines(count)
+    elseif final == "M" then
+      screen.deleteLines(count)
+    elseif final == "@" then
+      screen.insertChars(count)
+    elseif final == "P" then
+      screen.deleteChars(count)
+    elseif final == "X" then
+      screen.eraseChars(count)
+    elseif final == "S" then
+      screen.scrollUp(count)
+    elseif final == "T" then
+      screen.scrollDown(count)
+    elseif final == "r" then
+      if not private then
+        local bottom = n[2] ?? 0
+        if bottom == 0 then
+          bottom = screen.rows
+        end
+        screen.setRegion(count - 1, bottom - 1)
+      end
+    elseif final == "s" then
+      if not private then
+        screen.saveCursor()
+      end
+    elseif final == "u" then
+      screen.restoreCursor()
+    elseif final == "h" or final == "l" then
+      if private then
+        for mode in n do
+          self.mode(mode, final == "h")
+        end
+      end
+    elseif final == "n" then
+      -- Is the terminal well, and where is the cursor?
+      if first == 5 then
+        self.reply = self.reply .. "\x1b[0n"
+      elseif first == 6 then
+        self.reply = self.reply .. "\x1b[" .. tostring(screen.y + 1) .. ";" .. tostring(
+          screen.x + 1
+        ) .. "R"
+      end
+    elseif final == "c" then
+      -- What kind of terminal: a VT102, which is what this is nearest.
+      if first == 0 and not private then
+        self.reply = self.reply .. "\x1b[?6c"
+      end
+    end
+  end
+
+  -- A program turning one of the terminal's own ways on or off.
+  local fn mode(mode: integer, on: boolean) -> nil
+    local screen = self.screen
+    if mode == 1 then
+      screen.applicationCursor = on
+    elseif mode == 25 then
+      screen.cursorShown = on
+      screen.changed = true
+    elseif mode == 47 or mode == 1047 then
+      screen.useAlternate(on)
+    elseif mode == 1049 then
+      if on then
+        screen.saveCursor()
+        screen.useAlternate(true)
+        screen.eraseInDisplay(2)
+      else
+        screen.useAlternate(false)
+        screen.restoreCursor()
+      end
+    elseif mode == 2004 then
+      screen.bracketedPaste = on
+    end
+  end
+
+  -- "Select graphic rendition": the colours and style of what follows.
+  local fn looks(n: table<integer>) -> nil
+    local screen = self.screen
+    local fg = Style.fg(screen.look)
+    local bg = Style.bg(screen.look)
+    local style = Style.style(screen.look)
+    local set = fn(flag: integer, on: boolean)
+      local has = Math.floor(style / flag) % 2 == 1
+      if on and not has then
+        style += flag
+      elseif not on and has then
+        style -= flag
+      end
+    end
+
+    if #n == 0 then
+      n = {0}
+    end
+    local i = 1
+    while i <= #n do
+      local code = n[i]
+      if code == 0 then
+        fg = Colours.own
+        bg = Colours.own
+        style = 0
+      elseif code == 1 then
+        set(Style.bold, true)
+      elseif code == 2 then
+        set(Style.dim, true)
+      elseif code == 4 then
+        set(Style.underline, true)
+      elseif code == 7 then
+        set(Style.inverse, true)
+      elseif code == 22 then
+        set(Style.bold, false)
+        set(Style.dim, false)
+      elseif code == 24 then
+        set(Style.underline, false)
+      elseif code == 27 then
+        set(Style.inverse, false)
+      elseif code >= 30 and code <= 37 then
+        fg = code - 30
+      elseif code == 39 then
+        fg = Colours.own
+      elseif code >= 40 and code <= 47 then
+        bg = code - 40
+      elseif code == 49 then
+        bg = Colours.own
+      elseif code >= 90 and code <= 97 then
+        fg = code - 90 + 8
+      elseif code >= 100 and code <= 107 then
+        bg = code - 100 + 8
+      elseif code == 38 or code == 48 then
+        -- "5;n" one of the 256, "2;r;g;b" any colour at all.
+        local colour = Colours.own
+        local kind = n[i + 1] ?? 0
+        if kind == 5 then
+          colour = Math.clamp(n[i + 2] ?? 0, 0, 255)
+          i += 2
+        elseif kind == 2 then
+          colour = Colours.nearest(n[i + 2] ?? 0, n[i + 3] ?? 0, n[i + 4] ?? 0)
+          i += 4
+        end
+        if code == 38 then
+          fg = colour
+        else
+          bg = colour
+        end
+      end
+      i += 1
+    end
+    screen.look = Style.pack(fg, bg, style)
+  end
+end

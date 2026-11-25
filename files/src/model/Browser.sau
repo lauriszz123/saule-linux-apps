@@ -1,0 +1,413 @@
+-- What the window is looking at: a folder, what is in it and in what
+-- order, which of them is chosen, where it has been (to go back to),
+-- and what it is in the middle of: a name being typed, something cut or
+-- copied, a question waiting for its answer.
+--
+-- The views call these and build the window again; nothing here draws.
+-- What could not be done is left in `notice`, for the window to say
+-- once.
+
+from "fileskit" import Entry, FileOps, Folder, Places, SortBy
+from Apps import Apps
+
+export class Browser
+  folder: string
+
+  -- Everything in the folder, as it is listed: in order, without what
+  -- the search leaves out.
+  entries: table<Entry>
+  -- Whether the folder could be read at all.
+  readable: boolean
+
+  -- The path of the one chosen, or "".
+  chosen: string
+
+  -- Where it has been, and where Back was pressed from.
+  local behind: table<string>
+  local ahead: table<string>
+
+  by: SortBy
+  ascending: boolean
+  hidden: boolean
+  -- "list" or "icons".
+  layout: string
+  -- What is typed in the search field: only names holding it are shown.
+  query: string
+
+  -- The path of the one being renamed, or "", and the name as typed.
+  -- A folder just made starts with nothing typed, its name shown
+  -- behind as what it will be called if nothing is: typing replaces
+  -- it, where an old name is there to be changed.
+  renaming: string
+  typed: string
+  fresh: boolean
+
+  -- How wide the folder is shown, in points; 0 before it is known. The
+  -- views leave out what there is no room for.
+  width: float
+
+  -- What was copied or cut: its path, and whether pasting moves it.
+  carried: string
+  cutting: boolean
+
+  -- A question waiting for yes or no: "empty" (the Trash) or "remove"
+  -- (the one chosen, for good), or "".
+  asking: string
+
+  -- Something to say once: what could not be done, or was.
+  notice: string
+
+  -- Room left on the folder's disk, in bytes; -1 when not known.
+  available: integer
+
+  -- Everything listed, said as one text: when it differs from last
+  -- time, the folder changed behind the window's back.
+  local listed: string
+
+  fn init(folder: string)
+    self.folder = folder
+    self.entries = {}
+    self.readable = true
+    self.chosen = ""
+    self.behind = {}
+    self.ahead = {}
+    self.by = SortBy.Name
+    self.ascending = true
+    self.hidden = false
+    self.layout = "list"
+    self.query = ""
+    self.renaming = ""
+    self.typed = ""
+    self.fresh = false
+    self.width = 0.0
+    self.carried = ""
+    self.cutting = false
+    self.asking = ""
+    self.notice = ""
+    self.available = -1
+    self.listed = ""
+    self.reload()
+  end
+
+  -- Read the folder again. True when what is shown changed.
+  fn reload() -> boolean
+    local all = Folder.list(self.folder, self.hidden)
+    self.readable = all != nil
+    local wanted = String.lower(String.trim(self.query))
+    local shown: table<Entry> = {}
+    for entry in all ?? {} do
+      if wanted == "" or String.contains(String.lower(entry.name), wanted) then
+        Table.insert(shown, entry)
+      end
+    end
+    Folder.sort(shown, self.by, self.ascending)
+    self.entries = shown
+    if self.entry(self.chosen) == nil then
+      self.chosen = ""
+    end
+
+    local said: table<string> = {self.folder}
+    for entry in shown do
+      Table.insert(said, entry.name .. entry.size .. entry.modified)
+    end
+    local now = String.join("|", said)
+    local changed = now != self.listed
+    self.listed = now
+    return changed
+  end
+
+  -- How much room the disk has: asked when the folder changes, not with
+  -- every look at it.
+  fn measure() -> nil
+    self.available = Folder.available(self.folder)
+  end
+
+  fn entry(path: string) -> Entry?
+    if path == "" then
+      return nil
+    end
+    for entry in self.entries do
+      if entry.path == path then
+        return entry
+      end
+    end
+    return nil
+  end
+
+  fn inTrash() -> boolean
+    return self.folder == Places.trash() or FileOps.trashed(self.folder)
+  end
+
+  -- Show `folder`, remembering where this was.
+  fn go(folder: string) -> nil
+    if folder == self.folder then
+      self.reload()
+      return
+    end
+    Table.insert(self.behind, self.folder)
+    self.ahead = {}
+    self.show(folder)
+  end
+
+  local fn show(folder: string) -> nil
+    self.folder = folder
+    self.chosen = ""
+    self.renaming = ""
+    self.query = ""
+    self.reload()
+    self.measure()
+  end
+
+  fn canGoBack() -> boolean
+    return #self.behind > 0
+  end
+
+  fn canGoForward() -> boolean
+    return #self.ahead > 0
+  end
+
+  fn back() -> nil
+    local to = Table.remove(self.behind)
+    if to != nil then
+      Table.insert(self.ahead, self.folder)
+      self.show(to!)
+    end
+  end
+
+  fn forward() -> nil
+    local to = Table.remove(self.ahead)
+    if to != nil then
+      Table.insert(self.behind, self.folder)
+      self.show(to!)
+    end
+  end
+
+  -- To the folder this one is in, with this one chosen there.
+  fn up() -> nil
+    local here = self.folder
+    local parent = Folder.parent(here)
+    if parent != here then
+      self.go(parent)
+      self.chosen = here
+    end
+  end
+
+  -- Order by `by`; asked again for the same, the other way round.
+  fn sort(by: SortBy) -> nil
+    if by == self.by then
+      self.ascending = not self.ascending
+    else
+      self.by = by
+      -- Names read from A; dates and sizes from the newest and largest.
+      self.ascending = by == SortBy.Name or by == SortBy.Kind
+    end
+    self.reload()
+  end
+
+  fn search(query: string) -> nil
+    self.query = query
+    self.reload()
+  end
+
+  fn toggleHidden() -> nil
+    self.hidden = not self.hidden
+    self.reload()
+  end
+
+  -- Choose the one `step` places after the one chosen (before, when
+  -- negative); with none chosen, the first or the last.
+  fn chooseBy(step: integer) -> nil
+    local count = #self.entries
+    if count == 0 then
+      return
+    end
+    local at = 0
+    for i = 1, count do
+      if self.entries[i].path == self.chosen then
+        at = i
+      end
+    end
+    if at == 0 then
+      if step > 0 then
+        at = 1
+      else
+        at = count
+      end
+    else
+      at = Math.clamp(at + step, 1, count)
+    end
+    self.chosen = self.entries[at].path
+  end
+
+  -- Choose the first whose name starts with `letters`.
+  fn chooseStarting(letters: string) -> nil
+    local wanted = String.lower(letters)
+    for entry in self.entries do
+      if String.starts(String.lower(entry.name), wanted) then
+        self.chosen = entry.path
+        return
+      end
+    end
+  end
+
+  -- Open `entry`: a folder is gone into, a text file opens in the
+  -- editor, and anything else has nothing here to open it.
+  fn open(entry: Entry) -> nil
+    if entry.folder then
+      self.go(entry.path)
+      return
+    end
+    if not entry.text() then
+      self.notice = "Nothing here opens “" .. entry.name .. "” yet."
+      return
+    end
+    if not Apps.open("editor", entry.path) then
+      self.notice = "The editor could not be started."
+    end
+  end
+
+  fn openChosen() -> nil
+    local entry = self.entry(self.chosen)
+    if entry != nil then
+      self.open(entry!)
+    end
+  end
+
+  -- A terminal starting in the folder chosen, or in this one.
+  fn openTerminal() -> nil
+    local where = self.folder
+    local entry = self.entry(self.chosen)
+    if entry != nil and entry!.folder then
+      where = entry!.path
+    end
+    if not Apps.open("terminal", where) then
+      self.notice = "The terminal could not be started."
+    end
+  end
+
+  -- A new folder here, with its name ready to be typed over.
+  fn newFolder() -> nil
+    local path = FileOps.newFolder(self.folder)
+    if path == nil then
+      self.notice = "A folder can't be made here."
+      return
+    end
+    self.query = ""
+    self.reload()
+    self.chosen = path!
+    self.startRenaming()
+    self.typed = ""
+    self.fresh = true
+  end
+
+  fn startRenaming() -> nil
+    local entry = self.entry(self.chosen)
+    if entry != nil then
+      self.renaming = entry!.path
+      self.typed = entry!.name
+      self.fresh = false
+    end
+  end
+
+  fn cancelRenaming() -> nil
+    self.renaming = ""
+  end
+
+  -- The name typed becomes the name.
+  fn finishRenaming() -> nil
+    local path = self.renaming
+    if path == "" then
+      return
+    end
+    self.renaming = ""
+    -- Nothing typed for a new folder: it keeps the name it was made
+    -- with.
+    if self.fresh and String.trim(self.typed) == "" then
+      self.fresh = false
+      return
+    end
+    self.fresh = false
+    local problem = FileOps.rename(path, self.typed)
+    if problem != "" then
+      self.notice = problem
+    else
+      self.chosen = Folder.join(Folder.parent(path), String.trim(self.typed))
+    end
+    self.reload()
+  end
+
+  fn copy(cutting: boolean) -> nil
+    if self.chosen != "" then
+      self.carried = self.chosen
+      self.cutting = cutting
+    end
+  end
+
+  -- Put what was copied or cut in this folder.
+  fn paste() -> nil
+    if self.carried == "" then
+      return
+    end
+    if not Os.exists(self.carried) then
+      self.notice = "What was copied is no longer there."
+      self.carried = ""
+      return
+    end
+    local problem = ""
+    if self.cutting then
+      problem = FileOps.move(self.carried, self.folder)
+      self.carried = ""
+    else
+      problem = FileOps.copy(self.carried, self.folder)
+    end
+    self.notice = problem
+    self.reload()
+    self.measure()
+  end
+
+  fn duplicate() -> nil
+    if self.chosen != "" then
+      self.notice = FileOps.duplicate(self.chosen)
+      self.reload()
+    end
+  end
+
+  -- Throw the one chosen away; in the Trash, ask before removing it
+  -- for good.
+  fn trash() -> nil
+    if self.chosen == "" then
+      return
+    end
+    if self.inTrash() then
+      self.asking = "remove"
+      return
+    end
+    local at = self.chosen
+    self.chooseBy(1)
+    if self.chosen == at then
+      self.chooseBy(-1)
+    end
+    self.notice = FileOps.trash(at)
+    self.reload()
+  end
+
+  -- The question's answer was yes.
+  fn confirmed() -> nil
+    local asked = self.asking
+    self.asking = ""
+    if asked == "empty" then
+      self.notice = FileOps.emptyTrash()
+    elseif asked == "remove" and self.chosen != "" then
+      self.notice = FileOps.remove(self.chosen)
+    end
+    self.reload()
+    self.measure()
+  end
+
+  -- `notice`, taken: it is said once.
+  fn said() -> string
+    local notice = self.notice
+    self.notice = ""
+    return notice
+  end
+end

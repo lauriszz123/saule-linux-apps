@@ -1,0 +1,186 @@
+-- The shell behind the terminal: started on a pseudo-terminal, read from
+-- every frame, written to as keys are pressed.
+--
+-- What it writes is bytes, and a character of several bytes can be cut
+-- in two by where one read ends: the bytes of a character not yet whole
+-- are kept back for the next read.
+
+from log import Logger
+from Parser import Parser
+from TerminalScreen import TerminalScreen
+
+export class Session
+  static local log: Logger = Logger("terminal")
+
+  screen: TerminalScreen
+  parser: Parser
+
+  -- The shell, and what it is called ("sh"); nil when it could not be
+  -- started or has ended.
+  pty: Pty?
+  shell: string
+  ended: boolean
+
+  -- Bytes read that end in the middle of a character.
+  local held: bytes
+
+  -- The most read in one frame: `cat` of a large file must not stop the
+  -- window from drawing.
+  static local most: integer = 65536
+
+  fn init(folder: string)
+    self.screen = TerminalScreen(80, 24)
+    self.parser = Parser(self.screen)
+    self.pty = nil
+    self.shell = "sh"
+    self.ended = false
+    self.held = Bytes.empty()
+    self.start(folder)
+  end
+
+  local fn start(folder: string) -> nil
+    -- What this terminal understands; a prompt as a Mac's shell has it
+    -- where none was chosen; and the folder asked for.
+    Os.setenv("TERM", "xterm-256color")
+    if Os.getenv("PS1") == nil then
+      Os.setenv("PS1", "\\h:\\W \\u\\$ ")
+    end
+    local home = Os.getenv("HOME") ?? "/"
+    if folder != "" and Os.exists(folder) then
+      Os.chdir(folder)
+    elseif Os.exists(home) then
+      Os.chdir(home)
+    end
+
+    local wanted = Os.getenv("SHELL") ?? "sh"
+    local parts = String.split(wanted, "/")
+    self.shell = parts[#parts]
+    self.pty = Os.spawnPty(wanted, {})
+    if self.pty == nil and wanted != "sh" then
+      self.shell = "sh"
+      self.pty = Os.spawnPty("sh", {})
+    end
+    if self.pty == nil then
+      Session.log.error("could not start a shell", {shell: wanted})
+      self.parser.feed("There is no shell to run on this system.\r\n")
+      self.ended = true
+    end
+  end
+
+  -- Each frame: take in what the shell wrote, and answer what it asked.
+  -- True when it has ended.
+  fn pump() -> boolean
+    local pty = self.pty
+    if pty == nil then
+      return self.ended
+    end
+    local data = pty!.read(Session.most)
+    if Bytes.len(data) > 0 then
+      self.parser.feed(self.decode(data))
+      if self.parser.reply != "" then
+        pty!.write(Bytes.fromString(self.parser.reply))
+        self.parser.reply = ""
+      end
+    elseif pty!.atEof() or not pty!.running() then
+      pty!.close()
+      self.pty = nil
+      self.ended = true
+    end
+    return self.ended
+  end
+
+  -- `data`, after what was held back, as text; the bytes of a character
+  -- cut short at its end are held back in turn.
+  local fn decode(data: bytes) -> string
+    local all = data
+    if Bytes.len(self.held) > 0 then
+      all = Bytes.fromHex(Bytes.toHex(self.held) .. Bytes.toHex(data)) ?? data
+      self.held = Bytes.empty()
+    end
+    local length = Bytes.len(all)
+    -- A character is at most four bytes, so at most three are missing.
+    for cut = 0, Math.min(3, length) do
+      if cut == length then
+        self.held = all
+        return ""
+      end
+      local text = Bytes.toString(Bytes.sub(all, 1, length - cut))
+      if text != nil then
+        if cut > 0 then
+          self.held = Bytes.sub(all, length - cut + 1, length)
+        end
+        return text!
+      end
+    end
+    -- Not text in any reading (a program printing a picture): each byte
+    -- as the character of that number, rather than nothing at all.
+    local hex = Bytes.toHex(all)
+    local out: table<string> = {}
+    for i = 1, String.len(hex), 2 do
+      local pair = String.sub(hex, i, i + 1)
+      local code = Session.hexValue(pair)
+      if code < 128 then
+        Table.insert(out, String.char(code))
+      else
+        Table.insert(out, "?")
+      end
+    end
+    return Table.concat(out, "")
+  end
+
+  static local fn hexValue(pair: string) -> integer
+    local digits = "0123456789abcdef"
+    local value = 0
+    for i = 1, String.len(pair) do
+      local at = String.indexOf(digits, String.lower(String.sub(pair, i, i)))
+      value = value * 16 + ((at ?? 1) - 1)
+    end
+    return value
+  end
+
+  -- Send `text` to the shell: a key pressed, or text pasted.
+  fn send(text: string) -> nil
+    local pty = self.pty
+    if pty == nil or text == "" then
+      return
+    end
+    pty!.write(Bytes.fromString(text))
+    -- Typing brings the window back to where the typing shows.
+    if self.screen.scrolled != 0 then
+      self.screen.scrolled = 0
+      self.screen.changed = true
+    end
+  end
+
+  -- Text from the clipboard: its new lines as the Return key sends
+  -- them, and wrapped where the program asked to be told pasting from
+  -- typing.
+  fn paste(text: string) -> nil
+    local sent = String.replace(String.replace(text, "\r\n", "\r"), "\n", "\r")
+    if self.screen.bracketedPaste then
+      sent = "\x1b[200~" .. sent .. "\x1b[201~"
+    end
+    self.send(sent)
+  end
+
+  -- The window is `columns` by `rows` cells now.
+  fn resize(columns: integer, rows: integer) -> nil
+    if columns == self.screen.columns and rows == self.screen.rows then
+      return
+    end
+    self.screen.resize(columns, rows)
+    local pty = self.pty
+    if pty != nil then
+      pty!.resize(columns, rows)
+    end
+  end
+
+  fn close() -> nil
+    local pty = self.pty
+    if pty != nil then
+      pty!.kill()
+      pty!.close()
+      self.pty = nil
+    end
+  end
+end

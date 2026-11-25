@@ -1,0 +1,105 @@
+-- "Do you want to save the changes?", asked before a document with
+-- changes is replaced by another: a card over the dimmed window, as a
+-- Mac's sheet.
+--
+--   [ Don't Save ]            [ Cancel ]  [ Save ]
+
+from uikit import *
+from Look import Look
+
+export class KeepSheet extends View
+  name: string
+  onSave: Action
+  onDiscard: Action
+  onCancel: Action
+
+  fn init(
+    name: string,
+    onSave: Action,
+    onDiscard: Action,
+    onCancel: Action,
+    key: string? = nil
+  )
+    self.super(key)
+    self.name = name
+    self.onSave = onSave
+    self.onDiscard = onDiscard
+    self.onCancel = onCancel
+  end
+
+  fn body(context: BuildContext) -> View
+    local asked = "Do you want to save the changes made to “" .. self.name .. "”?"
+    local question = Text(asked).font(14.0).foregroundStyle(Look.text)
+    local told = Text("Your changes will be lost if you don't save them.")
+    local inset = EdgeInsets.symmetric(horizontal: 14.0, vertical: 6.0)
+    local onCancel = self.onCancel
+
+    local discard = Button(
+      label: "Don't Save",
+      onPressed: self.onDiscard,
+      color: Look.button,
+      textColor: Look.text,
+      padding: inset
+    )
+    local cancel = Button(
+      label: "Cancel",
+      onPressed: onCancel,
+      color: Look.button,
+      textColor: Look.text,
+      padding: inset
+    )
+    local save = Button(
+      label: "Save",
+      onPressed: self.onSave,
+      color: Look.accent,
+      textColor: Look.text,
+      padding: inset,
+      autofocus: true
+    )
+    local buttons = HStack(alignment: StackAlignment.Center, spacing: 8.0) do
+      discard.frame(width: 104.0)
+      Spacer()
+      cancel.frame(width: 80.0)
+      save.frame(width: 80.0)
+    end
+
+    local column = VStack(
+      alignment: StackAlignment.Fill,
+      sizing: StackSize.Fit,
+      spacing: 8.0
+    ) do
+      question.lineLimit(3)
+      told.font(12.0).foregroundStyle(Look.dimText)
+      Spacer().frame(height: 6.0)
+      show(buttons)
+    end
+    local card = column.padding(18.0).background(
+      Look.card,
+      12.0,
+      border: Look.edge
+    )
+
+    local nothing = fn()
+    end
+    local held = GestureArea(child: card.frame(width: 400.0), onTap: nothing)
+    local over = held.centered().background(Look.screen)
+    local keys = fn(e: KeyEvent) -> boolean
+      if e.key == "escape" then
+        onCancel()
+        return true
+      end
+      return false
+    end
+    -- Nothing behind the sheet is pressed, right-clicked or scrolled
+    -- while it is up.
+    local behind = GestureArea(
+      child: over,
+      onTap: nothing,
+      onSecondaryTap: nothing,
+      onScroll: fn(dx: float, dy: float) -> boolean
+        return true
+      end
+    )
+    return Focus(child: behind, modal: true, onKeyDown: keys)
+  end
+end

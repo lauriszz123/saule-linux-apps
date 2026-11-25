@@ -1,0 +1,291 @@
+-- The page: the document's text, filling the window under the toolbar,
+-- with a caret and a selection, scrolling when the text is longer than
+-- the window.
+--
+-- Built from uikit's own pieces for editing text (`TextEngine` does the
+-- editing, `LineMap` knows where lines break, `EditableParagraph` draws)
+-- rather than its `TextEditor`, which is a box of a few lines for a
+-- form: a page scrolls, follows the caret, and takes Page Up and Down.
+--
+-- Keys, beyond typing:
+--
+--   arrows, Home, End           move; with Shift, select
+--   Ctrl+arrows                 by word; Ctrl+Home / End, the whole text
+--   Page Up / Down              a windowful
+--   Ctrl+A C X V Z Y            all, copy, cut, paste, undo, redo
+--   Tab                         four spaces
+--
+-- Anything else with Ctrl is offered to `onCommand` first: the window's
+-- own shortcuts.
+
+from uikit import *
+from model import Document
+from Look import Look
+
+export class Page extends View
+  document: Document
+  size: float
+  wrap: boolean
+  -- In a typeface whose characters are all one width.
+  fixed: boolean
+  onChanged: Action
+  onCommand: KeyHandler
+
+  static node: FocusNode = FocusNode()
+  static scroller: ScrollController = ScrollController()
+
+  fn init(
+    document: Document,
+    size: float,
+    wrap: boolean,
+    fixed: boolean,
+    onChanged: Action,
+    onCommand: KeyHandler,
+    key: string? = nil
+  )
+    self.super(key)
+    self.document = document
+    self.size = size
+    self.wrap = wrap
+    self.fixed = fixed
+    self.onChanged = onChanged
+    self.onCommand = onCommand
+  end
+
+  fn style() -> TextStyle
+    if self.fixed then
+      return TextStyle(Look.text, self.size, TextStyle.fixedFace())
+    end
+    return TextStyle(Look.text, self.size)
+  end
+
+  -- How wide a line of text can be: the page, less its margins.
+  static fn textWidth(outer: float, wrap: boolean) -> float
+    if not wrap or outer <= 0.0 then
+      return Math.huge
+    end
+    return Math.max(outer - Look.margin * 2.0, 40.0)
+  end
+
+  -- It has a tick to run: the page follows the caret.
+  fn ticks() -> boolean
+    return true
+  end
+
+  -- When the caret has moved, scroll so that it is on the page. Done
+  -- here and not as the key is handled: the text is laid out anew by
+  -- then, and where the caret is can be asked.
+  fn tick(el: Element, dt: float) -> nil
+    local bag: table = el.data.scratch
+    local caret = (bag.caret as integer?) ?? 0
+    local length = String.len((bag.text as string?) ?? "")
+    local seen = (bag.followed as string?) ?? ""
+    local now = caret .. ":" .. length .. ":" .. self.size .. tostring(self.fixed)
+    if now == seen or el.size.height <= 0.0 then
+      return
+    end
+    bag.followed = now
+
+    local style = self.style()
+    local map = LineMap(
+      (bag.text as string?) ?? "",
+      style,
+      Page.textWidth(el.size.width, self.wrap),
+      self.wrap
+    )
+    local line = style.lineHeight()
+    local top = map.pointAt(caret).dy + Look.margin
+    local offset = Page.scroller.offset
+    local room = el.size.height
+    if top - line < offset then
+      Page.scroller.jumpTo(Math.max(top - line, 0.0))
+    elseif top + line * 2.0 > offset + room then
+      Page.scroller.jumpTo(top + line * 2.0 - room)
+    end
+  end
+
+  fn body(context: BuildContext) -> View
+    local document = self.document
+    local data: ElementData = context.data()
+    local scratch: table = data.scratch
+
+    -- The text is the page's own while it is typed in, and the
+    -- document's when the document is replaced whole: a file opened.
+    if scratch.text == nil or scratch.revision != document.revision then
+      scratch.text = document.text
+      scratch.caret = 0
+      scratch.anchor = 0
+      scratch.revision = document.revision
+      scratch.followed = ""
+      Page.scroller.jumpTo(0.0)
+    end
+
+    local onChanged = self.onChanged
+    local onCommand = self.onCommand
+    local style = self.style()
+    local wrap = self.wrap
+    local editor = TextEngine(scratch, context, fn(text: string)
+      document.text = text
+      onChanged()
+    end)
+
+    local paragraph = EditableParagraph(
+      text: editor.text(),
+      caret: editor.caret(),
+      anchor: editor.anchor(),
+      caretVisible: data.focused == true,
+      style: style,
+      selectionColor: Look.selection,
+      softWrap: wrap
+    )
+    local sheet = paragraph.aligned(Alignment.topLeft()).padding(Look.margin)
+    local axis = ScrollAxis.Vertical
+    local scroll = ScrollView(child: sheet, axis: axis, controller: Page.scroller)
+
+    local width = fn() -> float
+      return Page.textWidth(context.size().width, wrap)
+    end
+    -- A point of the page as the place in the text nearest it: the
+    -- point is the window's, the text has scrolled and has a margin.
+    local seek = fn(x: float, y: float) -> integer
+      local map = LineMap(editor.text(), style, width(), wrap)
+      return map.indexAtPoint(
+        x - Look.margin,
+        y + Page.scroller.offset - Look.margin
+      )
+    end
+
+    local area = GestureArea(
+      child: scroll,
+      onTapDown: fn()
+        Page.node.requestFocus()
+      end,
+      onTapAt: fn(x: float, y: float)
+        editor.placeCaret(seek(x, y), false)
+      end,
+      onDoubleTapAt: fn(x: float, y: float)
+        editor.selectWord(seek(x, y))
+      end,
+      onDragTo: fn(x: float, y: float)
+        editor.placeCaret(seek(x, y), true)
+      end
+    )
+
+    return Focus(
+      child: area.cursor("ibeam"),
+      node: Page.node,
+      autofocus: true,
+      wantsText: true,
+      onText: fn(typed: string) -> boolean
+        editor.insert(typed)
+        return true
+      end,
+      onKeyDown: fn(e: KeyEvent) -> boolean
+        if onCommand(e) then
+          return true
+        end
+        local rows = Math.floor(context.size().height / style.lineHeight())
+        return Page.edit(e, editor, style, width(), wrap, Math.max(rows - 2, 1))
+      end,
+      onFocusChange: fn(gained: boolean)
+        data.focused = gained
+        context.markNeedsBuild()
+      end
+    )
+  end
+
+  -- One editing key. True when it was the page's.
+  static fn edit(
+    e: KeyEvent,
+    editor: TextEngine,
+    style: TextStyle,
+    width: float,
+    wrap: boolean,
+    pageRows: integer
+  ) -> boolean
+    local key = e.key
+
+    if e.command() then
+      match key
+        case "a" then editor.selectAll()
+        case "c" then editor.copy()
+        case "x" then editor.cut()
+        case "v" then editor.pasteRaw()
+        case "y" then editor.redo()
+        case "z" then
+          if e.shift then
+            editor.redo()
+          else
+            editor.undo()
+          end
+        case "left" then editor.moveWord(-1, e.shift)
+        case "right" then editor.moveWord(1, e.shift)
+        case "backspace" then editor.deleteWordBack()
+        case "delete" then editor.deleteWordForward()
+        case "home" then editor.placeCaret(0, e.shift)
+        case "end" then editor.placeCaret(String.len(editor.text()), e.shift)
+        case _ then
+          return false
+      end
+      return true
+    end
+
+    match key
+      case "return" then editor.insert("\n")
+      case "kpenter" then editor.insert("\n")
+      case "tab" then editor.insert("    ")
+      case "backspace" then editor.backspace()
+      case "delete" then editor.forwardDelete()
+      case "left" then editor.move(-1, e.shift)
+      case "right" then editor.move(1, e.shift)
+      case _ then
+        return Page.byLine(e, editor, style, width, wrap, pageRows)
+    end
+    return true
+  end
+
+  -- The keys that go by lines: up, down, a windowful either way, and
+  -- the ends of the line.
+  static fn byLine(
+    e: KeyEvent,
+    editor: TextEngine,
+    style: TextStyle,
+    width: float,
+    wrap: boolean,
+    pageRows: integer
+  ) -> boolean
+    local key = e.key
+    local lines = 0
+    match key
+      case "up" then
+        lines = -1
+      case "down" then
+        lines = 1
+      case "pageup" then
+        lines = -pageRows
+      case "pagedown" then
+        lines = pageRows
+      case "home" then nil
+      case "end" then nil
+      case _ then
+        return false
+    end
+
+    local map = LineMap(editor.text(), style, width, wrap)
+    local caret = editor.caret()
+    local line = map.lineAt(caret)
+    if key == "home" then
+      editor.placeCaret(map.startOf(line) - 1, e.shift)
+      return true
+    end
+    if key == "end" then
+      editor.placeCaret(map.endOf(line) - 1, e.shift)
+      return true
+    end
+    local target = Math.clamp(line + lines, 1, map.count())
+    if target != line then
+      editor.placeCaret(map.indexOf(target, map.columnAt(caret)), e.shift)
+    end
+    return true
+  end
+end

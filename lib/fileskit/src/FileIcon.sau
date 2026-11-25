@@ -1,0 +1,219 @@
+-- The picture of a file or a place, drawn: apps ship no icon files. It
+-- fills the square it is given.
+--
+--   "folder"     a blue folder, its tab at the top left
+--   "document"   a sheet of paper with its corner folded
+--   "home"       a house
+--   "desktop"    a screen
+--   "downloads"  an arrow into a tray
+--   "computer"   a laptop
+--   "disk"       a drive
+--   "trash"      a bin
+--
+-- "documents" is a folder's picture: it is one.
+
+import shine
+from uikit import *
+
+export class FileIcon extends View
+  kind: string
+  -- For the places, which are drawn as one line colour; a folder and a
+  -- document have their own.
+  colour: Color
+
+  static folder: Color = Color(0.33, 0.67, 0.98)
+  static folderTab: Color = Color(0.24, 0.56, 0.92)
+  static paper: Color = Color(0.93, 0.93, 0.95)
+  static fold: Color = Color(0.72, 0.73, 0.78)
+  static ink: Color = Color(0.62, 0.64, 0.70)
+
+  fn init(kind: string, colour: Color? = nil, key: string? = nil)
+    self.super(key)
+    self.kind = kind
+    self.colour = colour ?? Color(0.55, 0.72, 1.0)
+  end
+
+  fn layout(el: Element, constraints: Constraints) -> Size
+    return constraints.biggest()
+  end
+
+  fn paint(el: Element, x: float, y: float) -> nil
+    local s = Math.min(el.size.width, el.size.height)
+    local left = x + (el.size.width - s) / 2.0
+    local top = y + (el.size.height - s) / 2.0
+    match self.kind
+      case "folder" then FileIcon.drawFolder(left, top, s)
+      case "documents" then FileIcon.drawFolder(left, top, s)
+      case "document" then FileIcon.drawDocument(left, top, s)
+      case "home" then self.home(left, top, s)
+      case "desktop" then self.desktop(left, top, s)
+      case "downloads" then self.downloads(left, top, s)
+      case "computer" then self.computer(left, top, s)
+      case "disk" then self.disk(left, top, s)
+      case "trash" then self.trash(left, top, s)
+      case _ then FileIcon.drawDocument(left, top, s)
+    end
+  end
+
+  static fn drawFolder(x: float, y: float, s: float) -> nil
+    FileIcon.folderTab.apply()
+    Graphics.rectangle(
+      "fill",
+      x + s * 0.08,
+      y + s * 0.18,
+      s * 0.38,
+      s * 0.2,
+      s * 0.06
+    )
+    Graphics.rectangle(
+      "fill",
+      x + s * 0.08,
+      y + s * 0.26,
+      s * 0.84,
+      s * 0.56,
+      s * 0.07
+    )
+    FileIcon.folder.apply()
+    Graphics.rectangle(
+      "fill",
+      x + s * 0.08,
+      y + s * 0.32,
+      s * 0.84,
+      s * 0.5,
+      s * 0.07
+    )
+  end
+
+  static fn drawDocument(x: float, y: float, s: float) -> nil
+    local left = x + s * 0.2
+    local top = y + s * 0.1
+    local w = s * 0.6
+    local h = s * 0.8
+    local corner = s * 0.2
+    FileIcon.paper.apply()
+    Graphics.polygon(
+      "fill",
+      {
+        left,
+        top,
+        left + w - corner,
+        top,
+        left + w,
+        top + corner,
+        left + w,
+        top + h,
+        left,
+        top + h,
+      }
+    )
+    FileIcon.fold.apply()
+    Graphics.polygon(
+      "fill",
+      {
+        left + w - corner,
+        top,
+        left + w,
+        top + corner,
+        left + w - corner,
+        top + corner,
+      }
+    )
+    FileIcon.ink.apply()
+    local line = Math.max(s * 0.045, 1.0)
+    for row = 0, 2 do
+      Graphics.rectangle(
+        "fill",
+        left + s * 0.1,
+        top + s * 0.36 + (row as float) * s * 0.13,
+        w - s * 0.2,
+        line
+      )
+    end
+  end
+
+  local fn pen(s: float) -> nil
+    self.colour.apply()
+    Graphics.setLineWidth(Math.max(s * 0.09, 1.3))
+  end
+
+  local fn home(x: float, y: float, s: float) -> nil
+    self.pen(s)
+    Graphics.line(x + s * 0.14, y + s * 0.5, x + s * 0.5, y + s * 0.18)
+    Graphics.line(x + s * 0.5, y + s * 0.18, x + s * 0.86, y + s * 0.5)
+    Graphics.rectangle(
+      "line",
+      x + s * 0.26,
+      y + s * 0.46,
+      s * 0.48,
+      s * 0.36,
+      s * 0.04
+    )
+  end
+
+  local fn desktop(x: float, y: float, s: float) -> nil
+    self.pen(s)
+    Graphics.rectangle(
+      "line",
+      x + s * 0.14,
+      y + s * 0.22,
+      s * 0.72,
+      s * 0.44,
+      s * 0.05
+    )
+    Graphics.line(x + s * 0.36, y + s * 0.8, x + s * 0.64, y + s * 0.8)
+    Graphics.line(x + s * 0.5, y + s * 0.66, x + s * 0.5, y + s * 0.8)
+  end
+
+  local fn downloads(x: float, y: float, s: float) -> nil
+    self.pen(s)
+    Graphics.line(x + s * 0.5, y + s * 0.16, x + s * 0.5, y + s * 0.58)
+    Graphics.line(x + s * 0.32, y + s * 0.42, x + s * 0.5, y + s * 0.6)
+    Graphics.line(x + s * 0.68, y + s * 0.42, x + s * 0.5, y + s * 0.6)
+    Graphics.line(x + s * 0.18, y + s * 0.8, x + s * 0.82, y + s * 0.8)
+  end
+
+  local fn computer(x: float, y: float, s: float) -> nil
+    self.pen(s)
+    Graphics.rectangle(
+      "line",
+      x + s * 0.2,
+      y + s * 0.24,
+      s * 0.6,
+      s * 0.4,
+      s * 0.04
+    )
+    Graphics.line(x + s * 0.1, y + s * 0.76, x + s * 0.9, y + s * 0.76)
+  end
+
+  local fn disk(x: float, y: float, s: float) -> nil
+    self.pen(s)
+    Graphics.rectangle(
+      "line",
+      x + s * 0.14,
+      y + s * 0.32,
+      s * 0.72,
+      s * 0.38,
+      s * 0.07
+    )
+    Graphics.circle("fill", x + s * 0.72, y + s * 0.58, s * 0.045)
+  end
+
+  local fn trash(x: float, y: float, s: float) -> nil
+    self.pen(s)
+    Graphics.line(x + s * 0.2, y + s * 0.28, x + s * 0.8, y + s * 0.28)
+    Graphics.line(x + s * 0.4, y + s * 0.18, x + s * 0.6, y + s * 0.18)
+    Graphics.polygon(
+      "line",
+      {
+        x + s * 0.28,
+        y + s * 0.3,
+        x + s * 0.72,
+        y + s * 0.3,
+        x + s * 0.66,
+        y + s * 0.84,
+        x + s * 0.34,
+        y + s * 0.84,
+      }
+    )
+  end
+end

@@ -1,0 +1,35 @@
+-- Terminal as a uikit app: one window, all of it the terminal. Started
+-- with a folder, the shell starts there (the file browser's "Open in
+-- Terminal").
+
+from uikit import *
+from "wmapi" import WmApp
+from model import Colours, Session
+from views import TerminalView, Type
+
+export class TerminalApp extends App
+  session: Session
+
+  fn init()
+    self.super()
+    Type.restore()
+    self.session = Session(Os.args()[1] ?? "")
+    WmApp.describe(
+      "Terminal",
+      Project.version,
+      "A shell in a window.",
+      settings: true
+    )
+  end
+
+  fn body() -> Scene
+    return WindowGroup(
+      title: "Terminal",
+      width: 660,
+      height: 420,
+      background: Colours.background
+    ) do
+      TerminalView(self.session)
+    end
+  end
+end

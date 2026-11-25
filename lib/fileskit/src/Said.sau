@@ -1,0 +1,91 @@
+-- How a size and a date are said to a person.
+
+export class Said
+  static months: table<string> = {
+    "Jan",
+    "Feb",
+    "Mar",
+    "Apr",
+    "May",
+    "Jun",
+    "Jul",
+    "Aug",
+    "Sep",
+    "Oct",
+    "Nov",
+    "Dec",
+  }
+
+  -- A size in bytes, in the unit that keeps it short: "812 bytes",
+  -- "4 KB", "1.2 MB". Thousands, as a Mac and a disk's maker count.
+  static fn size(bytes: integer) -> string
+    if bytes < 1000 then
+      if bytes == 1 then
+        return "1 byte"
+      end
+      return tostring(bytes) .. " bytes"
+    end
+    local units = {"KB", "MB", "GB", "TB"}
+    local value = (bytes as float) / 1000.0
+    local unit = 1
+    while value >= 1000.0 and unit < #units do
+      value = value / 1000.0
+      unit += 1
+    end
+    if value >= 100.0 or unit == 1 then
+      return String.format("%.0f %s", value, units[unit])
+    end
+    return String.format("%.1f %s", value, units[unit])
+  end
+
+  -- How far the clock is ahead of UTC, in seconds: what Saule Linux's
+  -- init writes for the chosen time zone, and 0 anywhere else.
+  static fn ahead() -> integer
+    local file = Io.open("/run/saule/time", IoMode.Read)
+    if file == nil then
+      return 0
+    end
+    local words = String.split(String.trim(file!.read("l") ?? ""), " ")
+    file!.close()
+    if #words < 2 then
+      return 0
+    end
+    local text = words[2]
+    local sign = 1
+    if String.starts(text, "-") then
+      sign = -1
+      text = String.sub(text, 2)
+    end
+    return sign * ((text as integer?) ?? 0)
+  end
+
+  -- When something was changed: "Today, 14:05", "Yesterday, 09:12",
+  -- "24 Nov 2026, 14:05".
+  static fn date(seconds: integer) -> string
+    if seconds <= 0 then
+      return "—"
+    end
+    local ahead = Said.ahead()
+    local at = seconds + ahead
+    local now = Os.time() + ahead
+    local time = Os.date("%H:%M", at)
+    local day = Math.floor(at / 86400)
+    local today = Math.floor(now / 86400)
+    if day == today then
+      return "Today, " .. time
+    end
+    if day == today - 1 then
+      return "Yesterday, " .. time
+    end
+    local month = Said.months[(Os.date("%m", at) as integer?) ?? 0] ?? ""
+    return Os.date("%d", at) .. " " .. month .. " " .. Os.date("%Y", at) .. ", " .. time
+  end
+
+  -- "1 item", "12 items".
+  static fn items(count: integer) -> string
+    if count == 1 then
+      return "1 item"
+    end
+    return tostring(count) .. " items"
+  end
+end

@@ -1,0 +1,86 @@
+-- The bar along the top of the window: what is done with the document
+-- at the left, its name in the middle (with "Edited" while it has
+-- changes not saved, as a Mac says it), and how it is shown at the
+-- right.
+--
+--   [New] [Open…] [Save]        Notes.txt — Edited        [A−] [A+] [Wrap]
+
+from uikit import *
+from model import Document
+from Look import Look
+from ToolButton import ToolButton
+
+export class EditorBar extends View
+  document: Document
+  wrap: boolean
+  onNew: Action
+  onOpen: Action
+  onSave: Action
+  onSmaller: Action
+  onLarger: Action
+  onWrap: Action
+
+  fn init(
+    document: Document,
+    wrap: boolean,
+    onNew: Action,
+    onOpen: Action,
+    onSave: Action,
+    onSmaller: Action,
+    onLarger: Action,
+    onWrap: Action,
+    key: string? = nil
+  )
+    self.super(key)
+    self.document = document
+    self.wrap = wrap
+    self.onNew = onNew
+    self.onOpen = onOpen
+    self.onSave = onSave
+    self.onSmaller = onSmaller
+    self.onLarger = onLarger
+    self.onWrap = onWrap
+  end
+
+  fn body(context: BuildContext) -> View
+    local document = self.document
+    local name = Text(document.title()).font(13.0).foregroundStyle(Look.text)
+    local title: table<View> = {name.lineLimit(1)}
+    if document.edited() then
+      local edited = Text("— Edited").font(13.0)
+      Table.insert(title, edited.foregroundStyle(Look.dimText))
+    end
+    local named = HStack(
+      alignment: StackAlignment.Center,
+      sizing: StackSize.Fit,
+      spacing: 6.0,
+      children: title
+    )
+
+    local centre = StackAlignment.Center
+    local fit = StackSize.Fit
+    local left = HStack(alignment: centre, sizing: fit, spacing: 6.0) do
+      ToolButton("New", self.onNew)
+      ToolButton("Open…", self.onOpen)
+      ToolButton("Save", self.onSave)
+    end
+    local right = HStack(alignment: centre, sizing: fit, spacing: 6.0) do
+      ToolButton("A−", self.onSmaller)
+      ToolButton("A+", self.onLarger)
+      ToolButton("Wrap", self.onWrap, on: self.wrap)
+    end
+
+    -- The name sits in the middle of the bar whatever is at its sides.
+    local sides = HStack(alignment: centre) do
+      show(left)
+      Spacer()
+      show(right)
+    end
+    local inset = EdgeInsets.symmetric(horizontal: 10.0)
+    local bar = ZStack(alignment: Alignment.center()) do
+      sides.padding(insets: inset)
+      show(named)
+    end
+    return bar.frame(height: Look.barHeight).background(Look.bar)
+  end
+end

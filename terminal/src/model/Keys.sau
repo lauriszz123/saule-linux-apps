@@ -1,0 +1,102 @@
+-- What a key sends to the program: the bytes a terminal has always sent
+-- for it. Characters typed are sent as they are; this is for the keys
+-- that type nothing, and for keys held with Ctrl or Alt.
+
+from uikit import KeyEvent
+
+export class Keys
+  -- What `e` sends, or "" for a key that sends nothing here (a letter
+  -- on its own arrives as text; a modifier is no key). `application`:
+  -- the program asked for the arrow keys' other sequences.
+  static fn bytes(e: KeyEvent, application: boolean) -> string
+    local key = e.key
+    local named = Keys.named(key, application)
+    if named != "" then
+      return named
+    end
+
+    -- One character's key: a letter, a digit, a punctuation mark.
+    if String.len(key) != 1 and key != "space" then
+      return ""
+    end
+    local char = key
+    if key == "space" then
+      char = " "
+    end
+
+    if e.ctrl and not e.alt then
+      return Keys.controlled(char)
+    end
+    -- Alt and a key is Escape and then the key: what "Meta" has meant
+    -- to shells and editors since terminals had such a key.
+    if e.alt and not e.ctrl then
+      if e.shift then
+        char = String.upper(char)
+      end
+      return "\x1b" .. char
+    end
+    return ""
+  end
+
+  -- Ctrl with a key: the control characters, 0 to 31.
+  static fn controlled(char: string) -> string
+    local code = String.byte(String.lower(char), 1)!
+    if code >= 97 and code <= 122 then
+      return String.char(code - 96)
+    end
+    return match char
+      case " " then String.char(0)
+      case "2" then String.char(0)
+      case "[" then String.char(27)
+      case "3" then String.char(27)
+      case "\\" then String.char(28)
+      case "4" then String.char(28)
+      case "]" then String.char(29)
+      case "5" then String.char(29)
+      case "6" then String.char(30)
+      case "/" then String.char(31)
+      case "7" then String.char(31)
+      case "8" then String.char(127)
+      case _ then ""
+    end
+  end
+
+  static fn named(key: string, application: boolean) -> string
+    -- The arrows, Home and End: "Escape O x" when a program asked for
+    -- that, else "Escape [ x".
+    local lead = "\x1b["
+    if application then
+      lead = "\x1bO"
+    end
+    return match key
+      case "return" then "\r"
+      case "kpenter" then "\r"
+      case "backspace" then String.char(127)
+      case "tab" then "\t"
+      case "escape" then "\x1b"
+      case "up" then lead .. "A"
+      case "down" then lead .. "B"
+      case "right" then lead .. "C"
+      case "left" then lead .. "D"
+      case "home" then lead .. "H"
+      case "end" then lead .. "F"
+      case "insert" then "\x1b[2~"
+      case "delete" then "\x1b[3~"
+      case "pageup" then "\x1b[5~"
+      case "pagedown" then "\x1b[6~"
+      case "f1" then "\x1bOP"
+      case "f2" then "\x1bOQ"
+      case "f3" then "\x1bOR"
+      case "f4" then "\x1bOS"
+      case "f5" then "\x1b[15~"
+      case "f6" then "\x1b[17~"
+      case "f7" then "\x1b[18~"
+      case "f8" then "\x1b[19~"
+      case "f9" then "\x1b[20~"
+      case "f10" then "\x1b[21~"
+      case "f11" then "\x1b[23~"
+      case "f12" then "\x1b[24~"
+      case _ then ""
+    end
+  end
+end

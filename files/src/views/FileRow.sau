@@ -1,0 +1,111 @@
+-- One file or folder as a row of the list: its picture and name, when
+-- it was changed, its size and its kind. A click chooses it, a double
+-- click opens it, a right click brings its menu.
+
+from uikit import *
+from "fileskit" import Entry, FileIcon, Said
+from model import Browser
+from Look import Look
+from Menus import Menus
+from NameField import NameField
+
+export class FileRow extends View
+  browser: Browser
+  entry: Entry
+  striped: boolean
+  refresh: Action
+
+  fn init(
+    browser: Browser,
+    entry: Entry,
+    striped: boolean,
+    refresh: Action,
+    key: string? = nil
+  )
+    self.super(key ?? entry.path)
+    self.browser = browser
+    self.entry = entry
+    self.striped = striped
+    self.refresh = refresh
+  end
+
+  fn body(context: BuildContext) -> View
+    local browser = self.browser
+    local entry = self.entry
+    local refresh = self.refresh
+    local chosen = browser.chosen == entry.path
+
+    local fill: Color? = nil
+    if chosen then
+      fill = Look.chosen
+    elseif self.striped then
+      fill = Look.stripe
+    end
+    local dim = Look.dimText
+    if chosen then
+      dim = Look.text
+    end
+
+    local kind = "document"
+    local size = Said.size(entry.size)
+    if entry.folder then
+      kind = "folder"
+      size = "--"
+    end
+    local name: View = Text(entry.name).font(13.0).foregroundStyle(
+      Look.text
+    ).lineLimit(1)
+    if browser.renaming == entry.path then
+      name = NameField(browser, refresh)
+    end
+
+    local date = Text(Said.date(entry.modified)).font(12.0)
+    local sized = Text(size).font(12.0).foregroundStyle(dim)
+    local kinded = Text(entry.kind()).font(12.0).foregroundStyle(dim)
+    local right = Alignment.centerRight()
+    local columns = Look.columns(browser.width)
+    local row = HStack(alignment: StackAlignment.Center, spacing: 8.0) do
+      FileIcon(kind).frame(width: 18.0, height: 18.0)
+      name.expanded()
+      if columns >= 2 then
+        date.foregroundStyle(dim).lineLimit(1).frame(width: Look.dateWidth)
+      end
+      if columns >= 1 then
+        sized.aligned(right).frame(width: Look.sizeWidth)
+      end
+      if columns >= 3 then
+        kinded.lineLimit(1).frame(width: Look.kindWidth)
+      end
+    end
+    local inset = EdgeInsets.symmetric(horizontal: 10.0)
+    local shown = row.padding(insets: inset).frame(
+      height: Look.rowHeight
+    ).background(fill, 5.0)
+
+    return GestureArea(
+      child: shown,
+      onTapDown: fn()
+        if browser.renaming != "" and browser.renaming != entry.path then
+          browser.finishRenaming()
+        end
+        browser.chosen = entry.path
+        refresh()
+      end,
+      onDoubleTapAt: fn(x: float, y: float)
+        browser.open(entry)
+        refresh()
+      end,
+      onSecondaryTapAt: fn(x: float, y: float)
+        local origin = absoluteOf(context.element())
+        browser.chosen = entry.path
+        refresh()
+        showMenu(
+          context,
+          origin.dx + x,
+          origin.dy + y,
+          items: Menus.forEntry(browser, entry, refresh)
+        )
+      end
+    )
+  end
+end

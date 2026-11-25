@@ -1,0 +1,184 @@
+-- The document being edited: its text, the file it is kept in if it has
+-- one, and whether the text has changed since it was last saved.
+--
+-- Text only. A file that isn't text (it has bytes no text has, or is
+-- too large to be a document) is not opened, and says why. Lines end in
+-- a new-line character here whatever they ended in on disk; saving
+-- writes them that way.
+
+from "fileskit" import Folder, FileOps, Places, Shell
+from log import Logger
+
+export class Document
+  static local log: Logger = Logger("editor")
+
+  -- The most a file can hold and be opened: laying out a page is work
+  -- for every character on it.
+  static largest: integer = 600000
+
+  text: string
+  -- What the text was when it was last saved or opened.
+  local saved: string
+
+  -- The file it is kept in, or "" for one never saved.
+  path: string
+
+  -- Counts each time the text is replaced whole (a file opened, a new
+  -- document): the page shows the new text from its top.
+  revision: integer
+
+  -- What could not be done, for the window to say; "" when nothing.
+  problem: string
+
+  fn init()
+    self.text = ""
+    self.saved = ""
+    self.path = ""
+    self.revision = 0
+    self.problem = ""
+  end
+
+  -- What the document is called: its file's name, or "Untitled".
+  fn title() -> string
+    if self.path == "" then
+      return "Untitled"
+    end
+    return Folder.nameOf(self.path)
+  end
+
+  fn edited() -> boolean
+    return self.text != self.saved
+  end
+
+  -- The folder a panel should start in: the document's own, or
+  -- Documents.
+  fn folder() -> string
+    if self.path != "" then
+      return Folder.parent(self.path)
+    end
+    local documents = Folder.join(Places.home(), "Documents")
+    if Os.exists(documents) then
+      return documents
+    end
+    return Places.home()
+  end
+
+  -- Give up what was typed since the last save.
+  fn discard() -> nil
+    self.text = self.saved
+    self.revision += 1
+  end
+
+  -- Start afresh: nothing typed, no file.
+  fn clear() -> nil
+    self.text = ""
+    self.saved = ""
+    self.path = ""
+    self.problem = ""
+    self.revision += 1
+  end
+
+  -- Open the file at `path`. False, with `problem` saying why, when it
+  -- can't be: the document stays as it was.
+  fn open(path: string) -> boolean
+    local whole = path
+    if not String.starts(whole, "/") then
+      whole = Folder.join(Os.cwd(), path)
+    end
+    local name = Folder.nameOf(whole)
+
+    -- A file that isn't there yet is a new document with that name, as
+    -- `editor notes.txt` in a terminal means it.
+    if not Os.exists(whole) then
+      self.text = ""
+      self.saved = ""
+      self.path = whole
+      self.problem = ""
+      self.revision += 1
+      return true
+    end
+
+    local size = Shell.output("stat -L -c %s -- " .. Shell.quote(whole))
+    local bytes = (String.trim(size ?? "") as integer?) ?? 0
+    if bytes > Document.largest then
+      self.problem = "“" .. name .. "” is too large to open here."
+      return false
+    end
+
+    local file = Io.open(whole, IoMode.Read)
+    if file == nil then
+      self.problem = "“" .. name .. "” could not be opened."
+      return false
+    end
+    local read: string? = nil
+    try
+      read = file!.read("a")
+    catch e: string
+      read = nil
+    end
+    file!.close()
+    if read == nil or String.contains(read!, String.char(0)) then
+      self.problem = "“" .. name .. "” is not a text file."
+      return false
+    end
+
+    local text = String.replace(read!, "\r\n", "\n")
+    self.text = text
+    self.saved = text
+    self.path = whole
+    self.problem = ""
+    self.revision += 1
+    Document.log.info("opened", {path: whole})
+    return true
+  end
+
+  -- Save to the document's own file. False when it has none (it needs a
+  -- name first) or the file could not be written.
+  fn save() -> boolean
+    if self.path == "" then
+      return false
+    end
+    return self.saveAs(self.path)
+  end
+
+  -- Save to `path`, which is the document's file from then on. Written
+  -- beside and renamed over, so a power cut leaves the old file whole.
+  fn saveAs(path: string) -> boolean
+    local part = path .. ".part"
+    local file = Io.open(part, IoMode.Write)
+    if file == nil then
+      self.problem = "“" .. Folder.nameOf(path) .. "” could not be saved there."
+      return false
+    end
+    file!.write(self.text)
+    file!.close()
+    if not Os.rename(part, path) then
+      Os.remove(part)
+      self.problem = "“" .. Folder.nameOf(path) .. "” could not be saved there."
+      return false
+    end
+    self.path = path
+    self.saved = self.text
+    self.problem = ""
+    Document.log.info("saved", {path: path})
+    return true
+  end
+
+  -- The window is closing: what was typed is kept. A document with a
+  -- file is saved to it; one that never had a file, and has something in
+  -- it, goes to Documents under a name not yet taken.
+  fn keep() -> nil
+    if not self.edited() then
+      return
+    end
+    if self.path != "" then
+      self.save()
+      return
+    end
+    if String.trim(self.text) == "" then
+      return
+    end
+    local folder = self.folder()
+    self.saveAs(Folder.join(folder, FileOps.free(folder, "Untitled.txt")))
+  end
+end

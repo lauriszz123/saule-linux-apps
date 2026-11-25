@@ -1,0 +1,73 @@
+-- How the editor shows a document, kept between one use and the next in
+-- `~/.config/saule/editor.conf`: a `name = value` a line.
+
+export class Settings
+  -- The text's size in points, whether long lines fold at the window's
+  -- edge, and whether the typeface is one whose characters are all one
+  -- width (for code, and columns that must line up).
+  size: float
+  wrap: boolean
+  fixed: boolean
+
+  static smallest: float = 10.0
+  static largest: float = 28.0
+
+  fn init()
+    self.size = 14.0
+    self.wrap = true
+    self.fixed = false
+    self.load()
+  end
+
+  static fn path() -> string
+    local home = Os.getenv("HOME") ?? "."
+    local config = Os.getenv("XDG_CONFIG_HOME") ?? (home .. "/.config")
+    return config .. "/saule/editor.conf"
+  end
+
+  fn resize(by: float) -> nil
+    self.size = Math.clamp(self.size + by, Settings.smallest, Settings.largest)
+    self.save()
+  end
+
+  local fn load() -> nil
+    local file = Io.open(Settings.path(), IoMode.Read)
+    if file == nil then
+      return
+    end
+    local text = file!.read("a") ?? ""
+    file!.close()
+    for line in String.split(text, "\n") do
+      local at = String.indexOf(line, "=")
+      if at != nil then
+        local name = String.trim(String.sub(line, 1, at! - 1))
+        local value = String.trim(String.sub(line, at! + 1))
+        if name == "size" then
+          local size = (value as float?) ?? self.size
+          self.size = Math.clamp(size, Settings.smallest, Settings.largest)
+        elseif name == "wrap" then
+          self.wrap = value == "true"
+        elseif name == "fixed" then
+          self.fixed = value == "true"
+        end
+      end
+    end
+  end
+
+  fn save() -> nil
+    local path = Settings.path()
+    local parts = String.split(path, "/")
+    Table.remove(parts)
+    Os.mkdir(String.join("/", parts), true)
+    local file = Io.open(path, IoMode.Write)
+    if file == nil then
+      return
+    end
+    file!.write(
+      "size = " .. tostring(self.size) .. "\nwrap = " .. tostring(self.wrap) .. "\nfixed = " .. tostring(
+        self.fixed
+      ) .. "\n"
+    )
+    file!.close()
+  end
+end

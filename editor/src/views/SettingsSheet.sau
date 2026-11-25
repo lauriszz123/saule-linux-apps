@@ -1,0 +1,123 @@
+-- The editor's settings, as a sheet over the window: the typeface, the
+-- text's size, and whether long lines fold. Opened from the menu under
+-- the app's name in the bar, or with Ctrl+comma; each change shows at
+-- once in the page behind, and is kept.
+
+from uikit import *
+from model import Settings
+from Look import Look
+from ToolButton import ToolButton
+
+export class SettingsSheet extends View
+  settings: Settings
+  changed: Action
+  onDone: Action
+
+  fn init(settings: Settings, changed: Action, onDone: Action, key: string? = nil)
+    self.super(key)
+    self.settings = settings
+    self.changed = changed
+    self.onDone = onDone
+  end
+
+  fn body(context: BuildContext) -> View
+    local settings = self.settings
+    local changed = self.changed
+    local onDone = self.onDone
+    local set = fn(change: Action) -> Action
+      return fn()
+        change()
+        settings.save()
+        changed()
+      end
+    end
+
+    local centre = StackAlignment.Center
+    local fit = StackSize.Fit
+    local face = HStack(alignment: centre, sizing: fit, spacing: 6.0) do
+      ToolButton("System", set(fn()
+        settings.fixed = false
+      end), on: not settings.fixed)
+      ToolButton("Fixed-width", set(fn()
+        settings.fixed = true
+      end), on: settings.fixed)
+    end
+    local points = Text(String.format("%.0f pt", settings.size)).font(12.0)
+    local size = HStack(alignment: centre, sizing: fit, spacing: 8.0) do
+      ToolButton("A−", set(fn()
+        settings.resize(-1.0)
+      end))
+      points.foregroundStyle(Look.text).frame(width: 40.0)
+      ToolButton("A+", set(fn()
+        settings.resize(1.0)
+      end))
+    end
+    local wrap = Toggle(value: settings.wrap, onChanged: fn(on: boolean)
+      settings.wrap = on
+      settings.save()
+      changed()
+    end)
+
+    local title = Text("Editor Settings").font(15.0).foregroundStyle(Look.text)
+    local done = Button(
+      label: "Done",
+      onPressed: onDone,
+      color: Look.accent,
+      textColor: Look.text,
+      padding: EdgeInsets.symmetric(horizontal: 16.0, vertical: 6.0),
+      autofocus: true
+    )
+    local foot = HStack(alignment: centre) do
+      Spacer()
+      done.frame(width: 84.0)
+    end
+    local column = VStack(
+      alignment: StackAlignment.Fill,
+      sizing: fit,
+      spacing: 12.0
+    ) do
+      show(title)
+      SettingsSheet.row("Typeface", face)
+      SettingsSheet.row("Size", size)
+      SettingsSheet.row("Wrap long lines", wrap)
+      Spacer().frame(height: 2.0)
+      show(foot)
+    end
+    local card = column.padding(18.0).background(
+      Look.card,
+      12.0,
+      border: Look.edge
+    )
+
+    local nothing = fn()
+    end
+    local held = GestureArea(child: card.frame(width: 380.0), onTap: nothing)
+    local over = held.centered().background(Look.screen)
+    local keys = fn(e: KeyEvent) -> boolean
+      if e.key == "escape" or e.key == "return" then
+        onDone()
+        return true
+      end
+      return false
+    end
+    local behind = GestureArea(
+      child: over,
+      onTap: onDone,
+      onSecondaryTap: nothing,
+      onScroll: fn(dx: float, dy: float) -> boolean
+        return true
+      end
+    )
+    return Focus(child: behind, modal: true, onKeyDown: keys)
+  end
+
+  -- A name at the left, what sets it at the right.
+  static fn row(name: string, control: View) -> View
+    local label = Text(name).font(13.0).foregroundStyle(Look.text)
+    return HStack(alignment: StackAlignment.Center) do
+      show(label)
+      Spacer()
+      show(control)
+    end
+  end
+end

@@ -1,0 +1,107 @@
+-- The folder as icons: each thing a picture with its name under it, in
+-- rows that fill the window's width.
+
+from uikit import *
+from "fileskit" import Entry, FileIcon
+from model import Browser
+from Look import Look
+from Menus import Menus
+from NameField import NameField
+
+export class FileTile extends View
+  browser: Browser
+  entry: Entry
+  refresh: Action
+
+  fn init(browser: Browser, entry: Entry, refresh: Action, key: string? = nil)
+    self.super(key ?? entry.path)
+    self.browser = browser
+    self.entry = entry
+    self.refresh = refresh
+  end
+
+  fn body(context: BuildContext) -> View
+    local browser = self.browser
+    local entry = self.entry
+    local refresh = self.refresh
+    local chosen = browser.chosen == entry.path
+
+    local kind = "document"
+    if entry.folder then
+      kind = "folder"
+    end
+    local iconFill: Color? = nil
+    local nameFill: Color? = nil
+    if chosen then
+      iconFill = Look.place
+      nameFill = Look.chosen
+    end
+    local size = Look.tileIcon
+    local icon = FileIcon(kind).frame(width: size, height: size).padding(
+      4.0
+    ).background(iconFill, 8.0)
+
+    local text = Text(entry.name).font(12.0).foregroundStyle(Look.text)
+    local centred = text.lineLimit(2).multilineTextAlignment(TextAlign.Center)
+    local inset = EdgeInsets.symmetric(horizontal: 5.0, vertical: 1.0)
+    local name: View = centred.padding(insets: inset).background(nameFill, 4.0)
+    if browser.renaming == entry.path then
+      name = NameField(browser, refresh, size: 12.0)
+    end
+
+    local tile = VStack(alignment: StackAlignment.Center, spacing: 4.0) do
+      show(icon)
+      show(name)
+      Spacer()
+    end
+    return GestureArea(
+      child: tile.frame(width: Look.tileWidth, height: Look.tileIcon + 52.0),
+      onTapDown: fn()
+        if browser.renaming != "" and browser.renaming != entry.path then
+          browser.finishRenaming()
+        end
+        browser.chosen = entry.path
+        refresh()
+      end,
+      onDoubleTapAt: fn(x: float, y: float)
+        browser.open(entry)
+        refresh()
+      end,
+      onSecondaryTapAt: fn(x: float, y: float)
+        local origin = absoluteOf(context.element())
+        browser.chosen = entry.path
+        refresh()
+        showMenu(
+          context,
+          origin.dx + x,
+          origin.dy + y,
+          items: Menus.forEntry(browser, entry, refresh)
+        )
+      end
+    )
+  end
+end
+
+export class FileTiles extends View
+  browser: Browser
+  refresh: Action
+
+  fn init(browser: Browser, refresh: Action, key: string? = nil)
+    self.super(key)
+    self.browser = browser
+    self.refresh = refresh
+  end
+
+  fn body(context: BuildContext) -> View
+    local browser = self.browser
+    local tiles: table<View> = {}
+    for entry in browser.entries do
+      Table.insert(tiles, FileTile(browser, entry, self.refresh))
+    end
+    local flow = FlowStack(children: tiles, spacing: 6.0, runSpacing: 6.0)
+    return ScrollView(
+      child: flow.padding(12.0),
+      key: "icons:" .. browser.folder
+    )
+  end
+end

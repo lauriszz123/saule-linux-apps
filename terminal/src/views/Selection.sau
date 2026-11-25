@@ -1,0 +1,50 @@
+-- What the mouse has marked: from one cell to another, each a line
+-- (counted from the oldest line of the history, so it stays put as the
+-- screen scrolls) and a column.
+
+export class Selection
+  active: boolean
+  anchorLine: integer
+  anchorColumn: integer
+  line: integer
+  column: integer
+
+  fn init()
+    self.active = false
+    self.anchorLine = 0
+    self.anchorColumn = 0
+    self.line = 0
+    self.column = 0
+  end
+
+  fn clear() -> nil
+    self.active = false
+  end
+
+  -- The mouse is held at this cell: where the selection starts, the
+  -- first time, and where it reaches from then on.
+  fn dragTo(line: integer, column: integer) -> nil
+    if not self.active then
+      self.active = true
+      self.anchorLine = line
+      self.anchorColumn = column
+    end
+    self.line = line
+    self.column = column
+  end
+
+  -- The two ends in reading order: the first line and column, then the
+  -- last.
+  fn ends() -> (integer, integer, integer, integer)
+    local forwards = self.anchorLine < self.line or (self.anchorLine == self.line and self.anchorColumn <= self.column)
+    if forwards then
+      return self.anchorLine, self.anchorColumn, self.line, self.column
+    end
+    return self.line, self.column, self.anchorLine, self.anchorColumn
+  end
+
+  -- Whether anything is marked: more than the cell the press was on.
+  fn any() -> boolean
+    return self.active and (self.anchorLine != self.line or self.anchorColumn != self.column)
+  end
+end

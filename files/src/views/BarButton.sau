@@ -1,0 +1,47 @@
+-- A button of the bar: a word or a mark on a quiet pill, lit when it is
+-- the one of a pair that is on, dim when there is nothing for it to do.
+
+from uikit import *
+from Look import Look
+
+export class BarButton extends View
+  label: string
+  onPressed: Action
+  on: boolean
+  enabled: boolean
+  size: float
+
+  fn init(
+    label: string,
+    onPressed: Action,
+    on: boolean = false,
+    enabled: boolean = true,
+    size: float = 12.0,
+    key: string? = nil
+  )
+    self.super(key ?? label)
+    self.label = label
+    self.onPressed = onPressed
+    self.on = on
+    self.enabled = enabled
+    self.size = size
+  end
+
+  fn body(context: BuildContext) -> View
+    local fill = Look.button
+    if self.on then
+      fill = Look.buttonOn
+    end
+    local ink = Look.text
+    if not self.enabled then
+      ink = Color(1.0, 1.0, 1.0, 0.25)
+    end
+    local label = Text(self.label).font(self.size).foregroundStyle(ink)
+    local inset = EdgeInsets.symmetric(horizontal: 10.0, vertical: 4.0)
+    local pill = label.padding(insets: inset).background(fill, 6.0)
+    if not self.enabled then
+      return pill
+    end
+    return GestureArea(child: pill, onTap: self.onPressed)
+  end
+end

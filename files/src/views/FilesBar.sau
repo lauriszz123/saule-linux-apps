@@ -1,0 +1,106 @@
+-- The bar along the top of the folder: back and forward, the folder's
+-- name, how it is shown, a new folder, and a search of the names in it.
+--
+--   ‹ ›   Documents               [List|Icons] [New Folder] [ Search ]
+--
+-- In the Trash there is nothing to make: the button there empties it.
+
+from uikit import *
+from "fileskit" import Places
+from model import Browser
+from Look import Look
+from BarButton import BarButton
+
+export class FilesBar extends View
+  browser: Browser
+  refresh: Action
+
+  -- What gives the search field the keyboard: while it has it, what is
+  -- typed is a search, not a choice among the files.
+  static node: FocusNode = FocusNode()
+
+  fn init(browser: Browser, refresh: Action, key: string? = nil)
+    self.super(key)
+    self.browser = browser
+    self.refresh = refresh
+  end
+
+  fn body(context: BuildContext) -> View
+    local browser = self.browser
+    local refresh = self.refresh
+
+    local back = BarButton("‹", fn()
+      browser.back()
+      refresh()
+    end, enabled: browser.canGoBack(), size: 16.0)
+    local forward = BarButton("›", fn()
+      browser.forward()
+      refresh()
+    end, enabled: browser.canGoForward(), size: 16.0)
+    local title = Text(Places.title(browser.folder)).font(14.0)
+
+    local list = BarButton("List", fn()
+      browser.layout = "list"
+      refresh()
+    end, on: browser.layout == "list")
+    local icons = BarButton("Icons", fn()
+      browser.layout = "icons"
+      refresh()
+    end, on: browser.layout == "icons")
+
+    local action = BarButton("New Folder", fn()
+      browser.newFolder()
+      refresh()
+    end)
+    if browser.inTrash() then
+      action = BarButton("Empty Trash", fn()
+        browser.asking = "empty"
+        refresh()
+      end, enabled: #browser.entries > 0)
+    end
+
+    local search = TextField(
+      value: browser.query,
+      placeholder: "Search",
+      style: TextStyle(Look.text, 12.0),
+      placeholderStyle: TextStyle(Look.dimText, 12.0),
+      background: Look.well,
+      border: Look.edge,
+      focusBorder: Look.accent,
+      padding: EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+      radius: 6.0,
+      width: 140.0,
+      node: FilesBar.node,
+      onChanged: fn(text: string)
+        browser.search(text)
+        refresh()
+      end,
+      key: "search:" .. browser.folder
+    )
+
+    -- In a narrow window the search goes first, then the choice of
+    -- view: both have keys, and the way back and the name do not.
+    local wide = browser.width <= 0.0 or browser.width >= 540.0
+    local middling = browser.width <= 0.0 or browser.width >= 380.0
+    local row = HStack(alignment: StackAlignment.Center, spacing: 6.0) do
+      show(back)
+      show(forward)
+      Spacer().frame(width: 6.0)
+      title.foregroundStyle(Look.text).lineLimit(1)
+      Spacer()
+      if middling then
+        show(list)
+        show(icons)
+        Spacer().frame(width: 6.0)
+      end
+      show(action)
+      if wide then
+        search.frame(width: 150.0, height: 26.0)
+      end
+    end
+    local inset = EdgeInsets.symmetric(horizontal: 10.0)
+    return row.padding(insets: inset).frame(height: Look.barHeight).background(
+      Look.bar
+    )
+  end
+end

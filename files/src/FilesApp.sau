@@ -1,0 +1,36 @@
+-- Files as a uikit app: one window on one folder at a time.
+
+from uikit import *
+from "fileskit" import Places
+from "wmapi" import WmApp
+from model import Browser
+from views import FilesWindow, Look
+
+export class FilesApp extends App
+  browser: Browser
+
+  fn init()
+    self.super()
+    local start = Os.args()[1] ?? ""
+    if start == "" or not Os.exists(start) then
+      start = Places.home()
+    end
+    self.browser = Browser(start)
+    WmApp.describe(
+      "Files",
+      Project.version,
+      "The computer's folders and what is in them."
+    )
+  end
+
+  fn body() -> Scene
+    return WindowGroup(
+      title: "Files",
+      width: 780,
+      height: 470,
+      background: Look.window
+    ) do
+      FilesWindow(self.browser)
+    end
+  end
+end

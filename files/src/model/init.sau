@@ -1,0 +1,5 @@
+-- model — what the file browser is looking at and doing, without its
+-- window.
+
+export from Apps import *
+export from Browser import *

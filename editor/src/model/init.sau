@@ -1,0 +1,4 @@
+-- model — the document, without its window.
+
+export from Document import *
+export from Settings import *

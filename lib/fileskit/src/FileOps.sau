@@ -1,0 +1,147 @@
+-- Doing things to files: a new folder, a new name, a copy, the Trash.
+--
+-- Each answers "" when it went well, and otherwise what went wrong in
+-- words a person can be shown. What Saule can do itself it does (a new
+-- folder, a new name in the same place); a whole folder copied, moved
+-- across disks or removed is the system's `cp`, `mv` and `rm`.
+--
+-- The Trash is a folder in the person's home, `.Trash`, as a Mac's is:
+-- throwing something away moves it there, and only emptying the Trash
+-- removes anything.
+
+from Folder import Folder
+from Places import Places
+from Shell import Shell
+
+export class FileOps
+  -- A name in `folder` nothing has yet: `wanted`, or `wanted 2`,
+  -- `wanted 3`… with the number before the extension.
+  static fn free(folder: string, wanted: string) -> string
+    if not Os.exists(Folder.join(folder, wanted)) then
+      return wanted
+    end
+    local stem = wanted
+    local ending = ""
+    for i = String.len(wanted), 2, -1 do
+      if String.sub(wanted, i, i) == "." and ending == "" then
+        stem = String.sub(wanted, 1, i - 1)
+        ending = String.sub(wanted, i)
+      end
+    end
+    local number = 2
+    while Os.exists(Folder.join(folder, stem .. " " .. number .. ending)) do
+      number += 1
+    end
+    return stem .. " " .. number .. ending
+  end
+
+  -- Whether `name` can be a file's: something, with no slash in it, and
+  -- not one of the two names every folder already has.
+  static fn valid(name: string) -> boolean
+    local trimmed = String.trim(name)
+    if trimmed == "" or trimmed == "." or trimmed == ".." then
+      return false
+    end
+    return not String.contains(trimmed, "/")
+  end
+
+  -- A new, empty folder in `folder`. Its path, or nil.
+  static fn newFolder(folder: string) -> string?
+    local path = Folder.join(folder, FileOps.free(folder, "untitled folder"))
+    if Os.mkdir(path, false) then
+      return path
+    end
+    return nil
+  end
+
+  static fn rename(path: string, name: string) -> string
+    local wanted = String.trim(name)
+    if not FileOps.valid(wanted) then
+      return "A name can't be empty or have a slash in it."
+    end
+    local target = Folder.join(Folder.parent(path), wanted)
+    if target == path then
+      return ""
+    end
+    if Os.exists(target) then
+      return "The name “" .. wanted .. "” is already taken."
+    end
+    if Os.rename(path, target) then
+      return ""
+    end
+    return "It could not be renamed."
+  end
+
+  -- Copy `path` into `folder`, under a name not yet taken there.
+  static fn copy(path: string, folder: string) -> string
+    local name = FileOps.free(folder, Folder.nameOf(path))
+    local target = Folder.join(folder, name)
+    return Shell.run(
+      "cp -a -- " .. Shell.quote(path) .. " " .. Shell.quote(target)
+    )
+  end
+
+  -- A copy beside the original: "name copy".
+  static fn duplicate(path: string) -> string
+    local folder = Folder.parent(path)
+    local name = Folder.nameOf(path)
+    local stem = name
+    local ending = ""
+    for i = String.len(name), 2, -1 do
+      if String.sub(name, i, i) == "." and ending == "" then
+        stem = String.sub(name, 1, i - 1)
+        ending = String.sub(name, i)
+      end
+    end
+    local target = Folder.join(
+      folder,
+      FileOps.free(folder, stem .. " copy" .. ending)
+    )
+    return Shell.run(
+      "cp -a -- " .. Shell.quote(path) .. " " .. Shell.quote(target)
+    )
+  end
+
+  -- Move `path` into `folder`, under a name not yet taken there.
+  static fn move(path: string, folder: string) -> string
+    if Folder.parent(path) == folder then
+      return ""
+    end
+    local name = FileOps.free(folder, Folder.nameOf(path))
+    local target = Folder.join(folder, name)
+    return Shell.run(
+      "mv -- " .. Shell.quote(path) .. " " .. Shell.quote(target)
+    )
+  end
+
+  -- Throw `path` away: into the Trash, to be had back until it is
+  -- emptied.
+  static fn trash(path: string) -> string
+    local trash = Places.trash()
+    if not Os.exists(trash) then
+      Os.mkdir(trash, true)
+    end
+    return FileOps.move(path, trash)
+  end
+
+  -- Remove `path` and everything in it, for good.
+  static fn remove(path: string) -> string
+    return Shell.run("rm -rf -- " .. Shell.quote(path))
+  end
+
+  -- Remove everything in the Trash, for good.
+  static fn emptyTrash() -> string
+    local trash = Places.trash()
+    if not Os.exists(trash) then
+      return ""
+    end
+    local problem = FileOps.remove(trash)
+    Os.mkdir(trash, true)
+    return problem
+  end
+
+  -- Whether `path` is in the Trash.
+  static fn trashed(path: string) -> boolean
+    return String.starts(path, Places.trash() .. "/")
+  end
+end

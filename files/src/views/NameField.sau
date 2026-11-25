@@ -1,0 +1,54 @@
+-- The field a name is typed in, where the name was: Enter keeps it,
+-- Escape (see `FilesWindow`) leaves the name as it was.
+
+from uikit import *
+from "fileskit" import Folder
+from model import Browser
+from Look import Look
+
+export class NameField extends View
+  browser: Browser
+  refresh: Action
+  size: float
+
+  -- It has the keyboard for as long as a name is being typed.
+  static node: FocusNode = FocusNode()
+
+  fn init(browser: Browser, refresh: Action, size: float = 13.0, key: string? = nil)
+    self.super(key)
+    self.browser = browser
+    self.refresh = refresh
+    self.size = size
+  end
+
+  fn body(context: BuildContext) -> View
+    local browser = self.browser
+    local refresh = self.refresh
+    local behind = ""
+    if browser.fresh then
+      behind = Folder.nameOf(browser.renaming)
+    end
+    return TextField(
+      value: browser.typed,
+      placeholder: behind,
+      placeholderStyle: TextStyle(Look.dimText, self.size),
+      style: TextStyle(Look.text, self.size),
+      background: Look.well,
+      border: Look.accent,
+      focusBorder: Look.accent,
+      padding: EdgeInsets.symmetric(horizontal: 4.0, vertical: 1.0),
+      radius: 4.0,
+      autofocus: true,
+      node: NameField.node,
+      onChanged: fn(text: string)
+        browser.typed = text
+      end,
+      onSubmitted: fn(text: string)
+        browser.typed = text
+        browser.finishRenaming()
+        refresh()
+      end,
+      key: "rename:" .. browser.renaming
+    )
+  end
+end

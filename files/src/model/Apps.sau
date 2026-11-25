@@ -1,0 +1,27 @@
+-- Opening something in another app. Apps are started by the window
+-- manager, so it is asked (`WmSettings.launch`): the editor for a text
+-- file, a terminal for a folder. Run outside a window manager there is
+-- nobody to ask, and nothing opens.
+
+from "wmapi" import WmService, WmSettings
+from log import Logger
+
+export class Apps
+  static local log: Logger = Logger("files")
+  static local wm: WmSettings? = nil
+
+  -- Start the app called `name` with `argument`. False when it could
+  -- not be: no window manager, or no such app.
+  static fn open(name: string, argument: string) -> boolean
+    try
+      if Apps.wm == nil then
+        Apps.wm = WmSettings.connect(WmService.name)
+      end
+      return Apps.wm!.launch(name, {argument})
+    catch e: string
+      Apps.log.warn("could not ask for an app", {app: name, reason: e})
+      Apps.wm = nil
+      return false
+    end
+  end
+end

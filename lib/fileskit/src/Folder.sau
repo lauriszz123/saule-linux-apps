@@ -1,0 +1,173 @@
+-- Reading a folder: everything in it, each with its size and date, in
+-- the order asked for.
+--
+-- Saule lists a folder's names and no more, so the rest is asked of
+-- `stat`, once for the whole folder: a line a file, "kind|size|changed|
+-- name". Links are followed, so a link to a folder opens as one; a link
+-- to nothing is left out.
+
+from Entry import Entry
+from Shell import Shell
+
+export enum SortBy
+  Name,
+  Modified,
+  Size,
+  Kind
+end
+
+export class Folder
+  -- Everything in `path`, folders and files together, by name. Nil when
+  -- it can't be read: no such folder, or no leave to look in it.
+  static fn list(path: string, hidden: boolean = false) -> table<Entry>?
+    if not Os.exists(path) then
+      return nil
+    end
+    -- Three patterns for every name: plain ones, ones starting with a
+    -- dot, and ones starting with two. One that matches nothing is
+    -- passed as it is written and fails quietly.
+    local names = "*"
+    if hidden then
+      names = "* .[!.]* ..?*"
+    end
+    local command = "cd " .. Shell.quote(path) .. " 2>/dev/null || exit 9; " .. "stat -L -c '%F|%s|%Y|%n' -- " .. names .. " 2>/dev/null; true"
+    local code, out, err = Os.capture(command)
+    if code != 0 then
+      return nil
+    end
+
+    local base = path
+    if not String.ends(base, "/") then
+      base = base .. "/"
+    end
+    local found: table<Entry> = {}
+    for line in String.split(out, "\n") do
+      local entry = Folder.parse(line, base)
+      if entry != nil then
+        Table.insert(found, entry!)
+      end
+    end
+    Folder.sort(found, SortBy.Name, true)
+    return found
+  end
+
+  -- One of `stat`'s lines. The name comes last and may have a bar in it.
+  static fn parse(line: string, base: string) -> Entry?
+    local fields = String.split(line, "|")
+    if #fields < 4 then
+      return nil
+    end
+    local name = fields[4]
+    for i = 5, #fields do
+      name = name .. "|" .. fields[i]
+    end
+    if name == "" or name == "*" then
+      return nil
+    end
+    return Entry(
+      name,
+      base .. name,
+      fields[1] == "directory",
+      (fields[2] as integer?) ?? 0,
+      (fields[3] as integer?) ?? 0
+    )
+  end
+
+  -- Put `entries` in order: by `by`, forwards or backwards. Names are
+  -- compared without regard to capitals, as a person reads them, and
+  -- settle what `by` leaves equal.
+  static fn sort(entries: table<Entry>, by: SortBy, ascending: boolean) -> nil
+    local before = fn(a: Entry, b: Entry) -> boolean
+      local an = String.lower(a.name)
+      local bn = String.lower(b.name)
+      match by
+        case SortBy.Modified then
+          if a.modified != b.modified then
+            return a.modified < b.modified
+          end
+        case SortBy.Size then
+          if a.size != b.size then
+            return a.size < b.size
+          end
+        case SortBy.Kind then
+          if a.kind() != b.kind() then
+            return a.kind() < b.kind()
+          end
+        case SortBy.Name then nil
+      end
+      return an < bn
+    end
+    Table.sort(entries, fn(a: Entry, b: Entry) -> boolean
+      if ascending then
+        return before(a, b)
+      end
+      return before(b, a)
+    end)
+  end
+
+  -- The folder `path` is in; "/" is in itself.
+  static fn parent(path: string) -> string
+    local trimmed = path
+    while String.len(trimmed) > 1 and String.ends(trimmed, "/") do
+      trimmed = String.sub(trimmed, 1, String.len(trimmed) - 1)
+    end
+    for i = String.len(trimmed), 1, -1 do
+      if String.sub(trimmed, i, i) == "/" then
+        if i == 1 then
+          return "/"
+        end
+        return String.sub(trimmed, 1, i - 1)
+      end
+    end
+    return "/"
+  end
+
+  -- The last part of `path`: what it is called.
+  static fn nameOf(path: string) -> string
+    if path == "/" then
+      return "Computer"
+    end
+    local parts = String.split(path, "/")
+    for i = #parts, 1, -1 do
+      if parts[i] != "" then
+        return parts[i]
+      end
+    end
+    return path
+  end
+
+  -- `name` inside `folder`.
+  static fn join(folder: string, name: string) -> string
+    if String.ends(folder, "/") then
+      return folder .. name
+    end
+    return folder .. "/" .. name
+  end
+
+  -- How much room is left on the disk `path` is on, in bytes; -1 when
+  -- that can't be told.
+  static fn available(path: string) -> integer
+    local out = Shell.output("df -k " .. Shell.quote(path) .. " 2>/dev/null")
+    if out == nil then
+      return -1
+    end
+    local lines = String.split(String.trim(out!), "\n")
+    local words: table<string> = {}
+    for word in String.split(lines[#lines], " ") do
+      if word != "" then
+        Table.insert(words, word)
+      end
+    end
+    -- "Filesystem 1K-blocks Used Available Use% Mounted on": the fourth,
+    -- or the third where a long device name took a line to itself.
+    local at = 4
+    if #words == 5 then
+      at = 3
+    end
+    local kilobytes = words[at] as integer?
+    if kilobytes == nil then
+      return -1
+    end
+    return kilobytes! * 1024
+  end
+end

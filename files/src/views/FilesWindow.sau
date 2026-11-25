@@ -1,0 +1,312 @@
+-- The file browser's window: the sidebar of places, and beside it the
+-- bar, the folder as a list or as icons, and the path along the foot;
+-- over them a question, when one is waiting.
+--
+-- The keys, a Mac's with Ctrl where it has Command:
+--
+--   arrows                 the one chosen: the next, the one before
+--   a letter               the first whose name starts with it
+--   Enter                  rename the one chosen
+--   Ctrl+O, Ctrl+Down      open it
+--   Ctrl+Up                the folder this one is in
+--   Ctrl+[  Ctrl+]         back, forward
+--   Ctrl+Shift+N           a new folder
+--   Ctrl+C  X  V  D        copy, cut, paste, duplicate
+--   Ctrl+Backspace, Delete move to the Trash
+--   Ctrl+Shift+.           show or hide the hidden files
+--   Ctrl+1  Ctrl+2         as icons, as a list
+--   Ctrl+R                 look at the folder again
+--   Escape                 leave a name as it was; choose nothing
+--
+-- The folder is also looked at again every few seconds, so what another
+-- program puts in it shows without being asked for.
+
+import shine
+from uikit import *
+from "fileskit" import Drives, Places
+from model import Browser
+from Look import Look
+from PlaceList import PlaceList
+from FilesBar import FilesBar
+from FileList import FileList
+from FileTiles import FileTiles
+from PathBar import PathBar
+from AskSheet import AskSheet
+from Menus import Menus
+from NameField import NameField
+
+export class FilesWindow extends View
+  browser: Browser
+
+  -- How often the folder is looked at again, and how long something
+  -- that went wrong stays said, in seconds.
+  static every: float = 3.0
+  static noticeTime: float = 5.0
+
+  -- Letters typed one after another choose by all of them, until this
+  -- long has passed without one.
+  static typingPause: float = 0.9
+  static local letters: string = ""
+  static local lettersAt: float = 0.0
+
+  -- What went wrong last, and when it was said.
+  static local notice: string = ""
+  static local noticeAt: float = 0.0
+
+  fn init(browser: Browser, key: string? = nil)
+    self.super(key)
+    self.browser = browser
+  end
+
+  -- It has a tick to run: see `View.ticks`.
+  fn ticks() -> boolean
+    return true
+  end
+
+  fn tick(el: Element, dt: float) -> nil
+    local browser = self.browser
+    local bag: table = el.data.scratch
+
+    local title = Places.title(browser.folder)
+    if title != (bag.title as string?) then
+      bag.title = title
+      Window.setTitle(title)
+    end
+
+    -- How wide the folder is shown, which says what there is room for:
+    -- the window can be tiled into half the screen at any moment.
+    local width = Math.max(el.size.width - Look.sidebarWidth, 1.0)
+    if width != browser.width then
+      browser.width = width
+      el.markNeedsBuild()
+    end
+
+    -- A name being typed keeps the keyboard.
+    if browser.renaming != "" and not NameField.node.hasFocus() then
+      NameField.node.requestFocus()
+    end
+
+    if FilesWindow.notice != "" and Os.clock() - FilesWindow.noticeAt > FilesWindow.noticeTime then
+      FilesWindow.notice = ""
+      el.markNeedsBuild()
+    end
+
+    local waited = ((bag.waited as float?) ?? 0.0) + dt
+    if waited < FilesWindow.every then
+      bag.waited = waited
+      return
+    end
+    bag.waited = 0.0
+    -- A drive plugged in or let go of changes the sidebar.
+    local drives: table<string> = {}
+    for drive in Drives.list() do
+      Table.insert(drives, drive.path)
+    end
+    local plugged = String.join("|", drives)
+    if plugged != (bag.drives as string?) then
+      bag.drives = plugged
+      el.markNeedsBuild()
+    end
+    if browser.renaming == "" and browser.asking == "" and browser.reload() then
+      el.markNeedsBuild()
+    end
+  end
+
+  fn body(context: BuildContext) -> View
+    local browser = self.browser
+    local revision = context.state("revision", 0)
+    local refresh = fn()
+      revision.set(revision.int(0) + 1)
+    end
+
+    -- Something a moment ago could not be done: said at the foot.
+    local said = browser.said()
+    if said != "" then
+      FilesWindow.notice = said
+      FilesWindow.noticeAt = Os.clock()
+    end
+    if browser.available < 0 and browser.readable then
+      browser.measure()
+    end
+
+    local content: View = FileList(browser, refresh)
+    if browser.layout == "icons" then
+      content = FileTiles(browser, refresh)
+    end
+    -- A press on the folder's own space chooses nothing; a right click
+    -- there brings the folder's menu.
+    local space = GestureArea(
+      child: content,
+      onTapDown: fn()
+        if browser.renaming != "" then
+          browser.finishRenaming()
+        end
+        browser.chosen = ""
+        refresh()
+      end,
+      onSecondaryTapAt: fn(x: float, y: float)
+        local origin = absoluteOf(context.element())
+        showMenu(
+          context,
+          origin.dx + Look.sidebarWidth + x,
+          origin.dy + Look.barHeight + 1.0 + y,
+          items: Menus.forFolder(browser, refresh),
+          width: 200.0
+        )
+      end
+    )
+
+    local line = Spacer().frame(height: 1.0).background(Look.hairline)
+    local folder = VStack(alignment: StackAlignment.Fill) do
+      FilesBar(browser, refresh)
+      show(line)
+      space.expanded()
+      PathBar(browser, FilesWindow.notice, refresh)
+    end
+    local window = HStack(alignment: StackAlignment.Fill) do
+      PlaceList(browser, refresh).frame(width: Look.sidebarWidth)
+      folder.expanded()
+    end
+
+    local layers: table<View> = {window}
+    if browser.asking != "" then
+      Table.insert(layers, FilesWindow.question(browser, refresh))
+    end
+
+    local keys = fn(e: KeyEvent) -> boolean
+      local handled = FilesWindow.key(browser, e)
+      if handled then
+        refresh()
+      end
+      return handled
+    end
+    local all = ZStack(children: layers)
+    local listening = KeyboardListener(onKeyDown: keys, child: all)
+    return Theme(data: Look.theme(), child: listening)
+  end
+
+  -- The question that is waiting, as a sheet.
+  static fn question(browser: Browser, refresh: Action) -> View
+    local yes = fn()
+      browser.confirmed()
+      refresh()
+    end
+    local no = fn()
+      browser.asking = ""
+      refresh()
+    end
+    if browser.asking == "empty" then
+      return AskSheet(
+        "Are you sure you want to empty the Trash?",
+        "Everything in it will be removed for good.",
+        "Empty Trash",
+        yes,
+        no
+      )
+    end
+    local name = ""
+    local entry = browser.entry(browser.chosen)
+    if entry != nil then
+      name = entry!.name
+    end
+    return AskSheet(
+      "Are you sure you want to delete “" .. name .. "”?",
+      "It will be removed for good, at once.",
+      "Delete",
+      yes,
+      no
+    )
+  end
+
+  -- One key. True when it was the window's.
+  static fn key(browser: Browser, e: KeyEvent) -> boolean
+    local key = e.key
+
+    -- While a name is typed the keys are its field's, but for Escape.
+    if browser.renaming != "" then
+      if key == "escape" then
+        browser.cancelRenaming()
+        return true
+      end
+      return false
+    end
+    if browser.asking != "" then
+      return false
+    end
+    -- In the search field, typing is searching; Escape gives the files
+    -- the keyboard back.
+    if FilesBar.node.hasFocus() then
+      if key == "escape" then
+        browser.search("")
+        return true
+      end
+      if not e.command() then
+        return false
+      end
+    end
+
+    if e.command() then
+      if e.shift then
+        match key
+          case "n" then browser.newFolder()
+          case "." then browser.toggleHidden()
+          case _ then
+            return false
+        end
+        return true
+      end
+      match key
+        case "o" then browser.openChosen()
+        case "down" then browser.openChosen()
+        case "up" then browser.up()
+        case "[" then browser.back()
+        case "]" then browser.forward()
+        case "c" then browser.copy(false)
+        case "x" then browser.copy(true)
+        case "v" then browser.paste()
+        case "d" then browser.duplicate()
+        case "backspace" then browser.trash()
+        case "r" then browser.reload()
+        case "1" then
+          browser.layout = "icons"
+        case "2" then
+          browser.layout = "list"
+        case _ then
+          return false
+      end
+      return true
+    end
+
+    if e.alt then
+      return false
+    end
+    match key
+      case "up" then browser.chooseBy(-1)
+      case "left" then browser.chooseBy(-1)
+      case "down" then browser.chooseBy(1)
+      case "right" then browser.chooseBy(1)
+      case "return" then browser.startRenaming()
+      case "delete" then browser.trash()
+      case "escape" then
+        browser.chosen = ""
+      case _ then
+        return FilesWindow.letter(browser, key)
+    end
+    return true
+  end
+
+  -- A letter or a digit typed: choose by the name's start.
+  static fn letter(browser: Browser, key: string) -> boolean
+    if String.len(key) != 1 then
+      return false
+    end
+    local now = Os.clock()
+    if now - FilesWindow.lettersAt > FilesWindow.typingPause then
+      FilesWindow.letters = ""
+    end
+    FilesWindow.letters = FilesWindow.letters .. key
+    FilesWindow.lettersAt = now
+    browser.chooseStarting(FilesWindow.letters)
+    return true
+  end
+end

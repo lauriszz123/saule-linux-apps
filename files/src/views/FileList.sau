@@ -1,0 +1,94 @@
+-- The folder as a list: a heading for each column, which orders the
+-- list by it when clicked (and the other way round when clicked again),
+-- and a row for each thing in the folder.
+
+from uikit import *
+from "fileskit" import SortBy
+from model import Browser
+from Look import Look
+from FileRow import FileRow
+
+export class FileList extends View
+  browser: Browser
+  refresh: Action
+
+  fn init(browser: Browser, refresh: Action, key: string? = nil)
+    self.super(key)
+    self.browser = browser
+    self.refresh = refresh
+  end
+
+  fn body(context: BuildContext) -> View
+    local browser = self.browser
+    local refresh = self.refresh
+
+    local rows: table<View> = {}
+    for i = 1, #browser.entries do
+      Table.insert(
+        rows,
+        FileRow(browser, browser.entries[i], i % 2 == 0, refresh)
+      )
+    end
+    local fill = StackAlignment.Fill
+    local column = VStack(alignment: fill, children: rows)
+    local inset = EdgeInsets.symmetric(horizontal: 6.0, vertical: 4.0)
+    local scroll = ScrollView(
+      child: column.padding(insets: inset),
+      key: "list:" .. browser.folder
+    )
+    return VStack(alignment: fill) do
+      self.headings()
+      scroll.expanded()
+    end
+  end
+
+  -- The columns' names, lined up with the rows under them.
+  local fn headings() -> View
+    local right = Alignment.centerRight()
+    local columns = Look.columns(self.browser.width)
+    local row = HStack(alignment: StackAlignment.Center, spacing: 8.0) do
+      Spacer().frame(width: 18.0)
+      self.heading("Name", SortBy.Name).expanded()
+      if columns >= 2 then
+        self.heading("Date Modified", SortBy.Modified).frame(
+          width: Look.dateWidth
+        )
+      end
+      if columns >= 1 then
+        self.heading("Size", SortBy.Size).aligned(right).frame(
+          width: Look.sizeWidth
+        )
+      end
+      if columns >= 3 then
+        self.heading("Kind", SortBy.Kind).frame(width: Look.kindWidth)
+      end
+    end
+    local inset = EdgeInsets.symmetric(horizontal: 16.0)
+    local line = Spacer().frame(height: 1.0).background(Look.hairline)
+    return VStack(alignment: StackAlignment.Fill) do
+      row.padding(insets: inset).frame(height: 22.0)
+      show(line)
+    end
+  end
+
+  local fn heading(title: string, by: SortBy) -> View
+    local browser = self.browser
+    local refresh = self.refresh
+    local said = title
+    local ink = Look.dimText
+    if browser.by == by then
+      ink = Look.text
+      if browser.ascending then
+        said = title .. "  ▴"
+      else
+        said = title .. "  ▾"
+      end
+    end
+    local label = Text(said).font(11.0).foregroundStyle(ink).lineLimit(1)
+    local order = fn()
+      browser.sort(by)
+      refresh()
+    end
+    return GestureArea(child: label, onTap: order)
+  end
+end

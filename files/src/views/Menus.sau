@@ -1,0 +1,77 @@
+-- The menus a right click brings: one for a file or a folder, one for
+-- the folder's own empty space.
+
+from uikit import *
+from "fileskit" import Entry
+from model import Browser
+
+export class Menus
+  -- What can be done with `entry`.
+  static fn forEntry(browser: Browser, entry: Entry, refresh: Action) -> table<MenuItem>
+    local done = fn(action: Action) -> Action
+      return fn()
+        action()
+        refresh()
+      end
+    end
+    local items: table<MenuItem> = {
+      MenuItem("Open", done(fn()
+        browser.open(entry)
+      end)),
+    }
+    if entry.folder then
+      Table.insert(items, MenuItem("Open in Terminal", done(fn()
+        browser.openTerminal()
+      end)))
+    end
+    Table.insert(items, MenuItem("Rename", done(fn()
+      browser.startRenaming()
+    end)))
+    Table.insert(items, MenuItem("Duplicate", done(fn()
+      browser.duplicate()
+    end)))
+    Table.insert(items, MenuItem("Copy", done(fn()
+      browser.copy(false)
+    end)))
+    Table.insert(items, MenuItem("Cut", done(fn()
+      browser.copy(true)
+    end)))
+    local away = "Move to Trash"
+    if browser.inTrash() then
+      away = "Delete Immediately…"
+    end
+    Table.insert(items, MenuItem(away, done(fn()
+      browser.trash()
+    end)))
+    return items
+  end
+
+  -- What can be done in the folder itself.
+  static fn forFolder(browser: Browser, refresh: Action) -> table<MenuItem>
+    local done = fn(action: Action) -> Action
+      return fn()
+        action()
+        refresh()
+      end
+    end
+    local hidden = "Show Hidden Files"
+    if browser.hidden then
+      hidden = "Hide Hidden Files"
+    end
+    return {
+      MenuItem("New Folder", done(fn()
+        browser.newFolder()
+      end), enabled: not browser.inTrash()),
+      MenuItem("Paste", done(fn()
+        browser.paste()
+      end), enabled: browser.carried != ""),
+      MenuItem("Open in Terminal", done(fn()
+        browser.chosen = ""
+        browser.openTerminal()
+      end)),
+      MenuItem(hidden, done(fn()
+        browser.toggleHidden()
+      end)),
+    }
+  end
+end

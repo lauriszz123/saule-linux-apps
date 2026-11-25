@@ -1,0 +1,94 @@
+-- A question before something that can't be undone, as a Mac's sheet: a
+-- card over the dimmed window, with the way out where Enter can't press
+-- the other one by accident.
+
+from uikit import *
+from Look import Look
+
+export class AskSheet extends View
+  question: string
+  detail: string
+  confirm: string
+  onConfirm: Action
+  onCancel: Action
+
+  fn init(
+    question: string,
+    detail: string,
+    confirm: string,
+    onConfirm: Action,
+    onCancel: Action,
+    key: string? = nil
+  )
+    self.super(key)
+    self.question = question
+    self.detail = detail
+    self.confirm = confirm
+    self.onConfirm = onConfirm
+    self.onCancel = onCancel
+  end
+
+  fn body(context: BuildContext) -> View
+    local onCancel = self.onCancel
+    local question = Text(self.question).font(14.0).foregroundStyle(Look.text)
+    local detail = Text(self.detail).font(12.0).foregroundStyle(Look.dimText)
+    local inset = EdgeInsets.symmetric(horizontal: 14.0, vertical: 6.0)
+    local cancel = Button(
+      label: "Cancel",
+      onPressed: onCancel,
+      color: Look.button,
+      textColor: Look.text,
+      padding: inset,
+      autofocus: true
+    )
+    local go = Button(
+      label: self.confirm,
+      onPressed: self.onConfirm,
+      color: Color(0.86, 0.30, 0.30),
+      textColor: Look.text,
+      padding: inset
+    )
+    local buttons = HStack(alignment: StackAlignment.Center, spacing: 8.0) do
+      Spacer()
+      cancel.frame(width: 90.0)
+      go.frame(width: 130.0)
+    end
+    local column = VStack(
+      alignment: StackAlignment.Fill,
+      sizing: StackSize.Fit,
+      spacing: 8.0
+    ) do
+      question.lineLimit(3)
+      detail.lineLimit(3)
+      Spacer().frame(height: 6.0)
+      show(buttons)
+    end
+    local card = column.padding(18.0).background(
+      Look.card,
+      12.0,
+      border: Look.edge
+    )
+    local nothing = fn()
+    end
+    local held = GestureArea(child: card.frame(width: 400.0), onTap: nothing)
+    local over = held.centered().background(Look.screen)
+    local keys = fn(e: KeyEvent) -> boolean
+      if e.key == "escape" then
+        onCancel()
+        return true
+      end
+      return false
+    end
+    -- Nothing behind the sheet is pressed, right-clicked or scrolled
+    -- while it is up.
+    local behind = GestureArea(
+      child: over,
+      onTap: nothing,
+      onSecondaryTap: nothing,
+      onScroll: fn(dx: float, dy: float) -> boolean
+        return true
+      end
+    )
+    return Focus(child: behind, modal: true, onKeyDown: keys)
+  end
+end

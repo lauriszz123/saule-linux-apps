@@ -1,0 +1,80 @@
+-- The terminal's colours: its own two, the sixteen every program names
+-- (as a Mac's Terminal has them, the blues lightened to be read on a
+-- dark background), and the 240 more that programs name by number.
+
+from uikit import Color
+
+export class Colours
+  static background: Color = Color(0.11, 0.11, 0.13)
+  static foreground: Color = Color(0.90, 0.90, 0.91)
+  static bold: Color = Color(1.0, 1.0, 1.0)
+  static cursor: Color = Color(0.78, 0.78, 0.80)
+  static selection: Color = Color(0.35, 0.55, 0.95, 0.40)
+
+  -- The number that stands for "the terminal's own colour" in a cell.
+  static own: integer = 256
+
+  static local named: table<table<float>> = {
+    {0.00, 0.00, 0.00},
+    {0.76, 0.21, 0.13},
+    {0.15, 0.74, 0.14},
+    {0.68, 0.68, 0.15},
+    {0.33, 0.52, 0.95},
+    {0.83, 0.22, 0.83},
+    {0.20, 0.73, 0.78},
+    {0.80, 0.80, 0.80},
+    {0.51, 0.51, 0.51},
+    {0.99, 0.22, 0.12},
+    {0.19, 0.91, 0.13},
+    {0.92, 0.93, 0.14},
+    {0.47, 0.64, 1.00},
+    {0.98, 0.21, 0.97},
+    {0.08, 0.94, 0.94},
+    {0.91, 0.92, 0.92},
+  }
+
+  -- Made once each, as they are first asked for.
+  static local made: table<integer, Color> = {}
+
+  -- The colour numbered `index`, 0 to 255: the sixteen named ones, a
+  -- cube of six shades of each of red, green and blue, and 24 greys.
+  static fn at(index: integer) -> Color
+    local cached = Colours.made[index]
+    if cached != nil then
+      return cached!
+    end
+    local colour = Colours.foreground
+    if index < 16 then
+      local rgb = Colours.named[index + 1]
+      colour = Color(rgb[1], rgb[2], rgb[3])
+    elseif index < 232 then
+      local cube = index - 16
+      local r = Math.floor(cube / 36)
+      local g = Math.floor(cube / 6) % 6
+      local b = cube % 6
+      colour = Color(Colours.shade(r), Colours.shade(g), Colours.shade(b))
+    else
+      local grey = (8.0 + 10.0 * ((index - 232) as float)) / 255.0
+      colour = Color(grey, grey, grey)
+    end
+    Colours.made[index] = colour
+    return colour
+  end
+
+  -- One of the cube's six shades, as xterm spaces them.
+  static local fn shade(step: integer) -> float
+    if step == 0 then
+      return 0.0
+    end
+    return (55.0 + 40.0 * (step as float)) / 255.0
+  end
+
+  -- The nearest of the cube's colours to one given in full: programs
+  -- that name any of sixteen million get the closest of 216.
+  static fn nearest(r: integer, g: integer, b: integer) -> integer
+    local step = fn(v: integer) -> integer
+      return Math.floor(((Math.clamp(v, 0, 255) as float) / 255.0) * 5.0 + 0.5)
+    end
+    return 16 + 36 * step(r) + 6 * step(g) + step(b)
+  end
+end

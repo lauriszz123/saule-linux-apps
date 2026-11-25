@@ -1,0 +1,260 @@
+-- The terminal's window: the canvas, with the keyboard and the mouse.
+--
+--   typing                    goes to the shell
+--   Ctrl+Shift+C / V          copy what is marked / paste
+--   Ctrl+Shift+= / -          the text larger / smaller
+--   Ctrl+comma                the settings (the text's size)
+--   the wheel, Shift+PageUp   back through what has scrolled away
+--   dragging                  marks text
+--
+-- Ctrl+C alone is the shell's (it interrupts), which is why copying
+-- takes Shift as well, as in every terminal on Linux.
+--
+-- Every frame the shell is read from; when it has written, the canvas
+-- is painted again. When the shell ends, so does the window.
+
+import shine
+from uikit import *
+from model import Keys, Session
+from Selection import Selection
+from Type import Type
+from TerminalCanvas import TerminalCanvas
+
+export class TerminalView extends View
+  session: Session
+
+  static node: FocusNode = FocusNode()
+  static selection: Selection = Selection()
+
+  -- Lines a notch of the wheel scrolls.
+  static wheel: float = 3.0
+
+  -- The settings' sheet is up.
+  static settingsShown: boolean = false
+
+  fn init(session: Session, key: string? = nil)
+    self.super(key)
+    self.session = session
+  end
+
+  -- It has a tick to run: see `View.ticks`.
+  fn ticks() -> boolean
+    return true
+  end
+
+  fn tick(el: Element, dt: float) -> nil
+    local session = self.session
+    if session.pump() then
+      App.quit()
+      return
+    end
+    local screen = session.screen
+    if screen.changed then
+      Repaint.request()
+    end
+
+    -- The window's name: what the program called it, or the shell and
+    -- the size, as a Mac's Terminal says them.
+    local bag: table = el.data.scratch
+    local title = screen.title
+    if title == "" then
+      title = session.shell
+    end
+    title = title .. " — " .. screen.columns .. "×" .. screen.rows
+    if title != (bag.title as string?) then
+      bag.title = title
+      Window.setTitle(title)
+    end
+  end
+
+  fn body(context: BuildContext) -> View
+    local session = self.session
+    local screen = session.screen
+    local selection = TerminalView.selection
+    local data: ElementData = context.data()
+
+    local canvas = TerminalCanvas(session, selection, data.focused == true)
+    local area = GestureArea(
+      child: canvas,
+      onTapDown: fn()
+        selection.clear()
+        TerminalView.node.requestFocus()
+        Repaint.request()
+      end,
+      onDragTo: fn(x: float, y: float)
+        local row, column = TerminalCanvas.cellAt(screen, x, y)
+        selection.dragTo(#screen.history - screen.scrolled + row, column)
+        Repaint.request()
+      end,
+      onScroll: fn(dx: float, dy: float) -> boolean
+        local lines = Math.floor(dy * TerminalView.wheel + 0.5)
+        if dy > 0.0 then
+          lines = Math.max(lines, 1)
+        elseif dy < 0.0 then
+          lines = Math.min(lines, -1)
+        end
+        screen.scrollBack(lines)
+        return true
+      end
+    )
+
+    local settings: View = area
+    if TerminalView.settingsShown then
+      settings = ZStack(children: {area, TerminalView.sheet(context)})
+    end
+
+    return Focus(
+      child: settings,
+      node: TerminalView.node,
+      autofocus: true,
+      wantsText: true,
+      onText: fn(typed: string) -> boolean
+        -- Alt and a key was sent as Escape and the key already.
+        if Keyboard.isDown("lalt") then
+          return true
+        end
+        selection.clear()
+        session.send(typed)
+        return true
+      end,
+      onKeyDown: fn(e: KeyEvent) -> boolean
+        if TerminalView.own(e) then
+          context.markNeedsBuild()
+          return true
+        end
+        return TerminalView.key(session, selection, e)
+      end,
+      onFocusChange: fn(gained: boolean)
+        data.focused = gained
+        context.markNeedsBuild()
+      end
+    )
+  end
+
+  -- The keys that are the window's own: the settings and the text's
+  -- size. While the settings are up, every key is theirs.
+  static fn own(e: KeyEvent) -> boolean
+    if TerminalView.settingsShown then
+      if e.key == "escape" or e.key == "return" then
+        TerminalView.settingsShown = false
+      elseif e.key == "=" or e.key == "+" then
+        Type.resize(1.0)
+      elseif e.key == "-" then
+        Type.resize(-1.0)
+      end
+      return true
+    end
+    if e.ctrl and not e.alt and e.key == "," then
+      TerminalView.settingsShown = true
+      return true
+    end
+    if e.ctrl and e.shift and e.key == "=" then
+      Type.resize(1.0)
+      return true
+    end
+    if e.ctrl and e.shift and e.key == "-" then
+      Type.resize(-1.0)
+      return true
+    end
+    return false
+  end
+
+  -- The settings: the text's size, on a card over the terminal.
+  static fn sheet(context: BuildContext) -> View
+    local ink = Color(0.95, 0.95, 0.97)
+    local dim = Color(1.0, 1.0, 1.0, 0.55)
+    local quiet = Color(1.0, 1.0, 1.0, 0.12)
+    local button = fn(label: string, action: Action) -> View
+      local text = Text(label).font(13.0).foregroundStyle(ink)
+      local inset = EdgeInsets.symmetric(horizontal: 12.0, vertical: 5.0)
+      local press = fn()
+        action()
+        context.markNeedsBuild()
+      end
+      return GestureArea(
+        child: text.padding(insets: inset).background(quiet, 6.0),
+        onTap: press
+      )
+    end
+    local title = Text("Terminal Settings").font(15.0).foregroundStyle(ink)
+    local points = Text(String.format("%.0f pt", Type.size)).font(13.0)
+    local centre = StackAlignment.Center
+    local size = HStack(alignment: centre, spacing: 10.0) do
+      Text("Text size").font(13.0).foregroundStyle(ink)
+      Spacer()
+      show(button("A−", fn()
+        Type.resize(-1.0)
+      end))
+      points.foregroundStyle(ink).frame(width: 44.0)
+      show(button("A+", fn()
+        Type.resize(1.0)
+      end))
+    end
+    local hint = Text("Ctrl+Shift+= and Ctrl+Shift+- change it too.").font(11.0)
+    local foot = HStack(alignment: centre) do
+      Spacer()
+      show(button("Done", fn()
+        TerminalView.settingsShown = false
+      end))
+    end
+    local column = VStack(
+      alignment: StackAlignment.Fill,
+      sizing: StackSize.Fit,
+      spacing: 12.0
+    ) do
+      show(title)
+      show(size)
+      hint.foregroundStyle(dim)
+      show(foot)
+    end
+    local card = column.padding(18.0).background(
+      Color(0.17, 0.17, 0.19),
+      12.0,
+      border: Color(1.0, 1.0, 1.0, 0.14)
+    )
+    local nothing = fn()
+    end
+    local held = GestureArea(child: card.frame(width: 340.0), onTap: nothing)
+    local over = held.centered().background(Color(0.0, 0.0, 0.0, 0.35))
+    return GestureArea(
+      child: over,
+      onTap: nothing,
+      onScroll: fn(dx: float, dy: float) -> boolean
+        return true
+      end
+    )
+  end
+
+  static fn key(session: Session, selection: Selection, e: KeyEvent) -> boolean
+    local screen = session.screen
+    if e.ctrl and e.shift and e.key == "c" then
+      if selection.any() then
+        local firstLine, firstColumn, lastLine, lastColumn = selection.ends()
+        Clipboard.set(
+          screen.textBetween(firstLine, firstColumn, lastLine, lastColumn)
+        )
+      end
+      return true
+    end
+    if e.ctrl and e.shift and e.key == "v" then
+      session.paste(Clipboard.get())
+      return true
+    end
+    if e.shift and e.key == "pageup" then
+      screen.scrollBack(screen.rows - 1)
+      return true
+    end
+    if e.shift and e.key == "pagedown" then
+      screen.scrollBack(-(screen.rows - 1))
+      return true
+    end
+
+    local bytes = Keys.bytes(e, screen.applicationCursor)
+    if bytes == "" then
+      return false
+    end
+    selection.clear()
+    session.send(bytes)
+    return true
+  end
+end

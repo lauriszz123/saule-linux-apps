@@ -1,0 +1,7 @@
+-- views — the terminal's window: the cells drawn, the keyboard, the
+-- mouse.
+
+export from Type import *
+export from Selection import *
+export from TerminalCanvas import *
+export from TerminalView import *

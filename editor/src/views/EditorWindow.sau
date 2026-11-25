@@ -1,0 +1,265 @@
+-- The editor's window: the toolbar, the page, a line at the foot saying
+-- where the document is kept, and over them whichever sheet is up.
+--
+-- What the toolbar's buttons and the keys do:
+--
+--   New      Ctrl+N          an empty document
+--   Open…    Ctrl+O          another file, chosen in a panel
+--   Save     Ctrl+S          to its file; one never saved is asked where
+--            Ctrl+Shift+S    to another file ("Save As")
+--   A− A+    Ctrl+- Ctrl+=   the text smaller or larger
+--   Wrap                     long lines fold at the window's edge, or run on
+--
+-- New and Open ask first when the document has changes not saved. What
+-- was to happen once that is answered is kept in `then`.
+
+import shine
+from uikit import *
+from "fileskit" import FilePanel, PanelState
+from model import Document, Settings
+from Look import Look
+from Page import Page
+from EditorBar import EditorBar
+from KeepSheet import KeepSheet
+from SettingsSheet import SettingsSheet
+
+-- What the window is in the middle of, beyond the document.
+export class EditorState
+  panel: PanelState
+  settings: Settings
+
+  -- "Save the changes?" is up, and what follows its answer: "new",
+  -- "open" or "close" (the window was asked to close).
+  asking: boolean
+  next: string
+
+  -- The settings' sheet is up.
+  settingsShown: boolean
+
+  -- Something outside the window's own handlers changed this (the
+  -- window was asked to close): it is to be built again.
+  stale: boolean
+
+  fn init()
+    self.panel = PanelState()
+    self.settings = Settings()
+    self.asking = false
+    self.next = ""
+    self.settingsShown = false
+    self.stale = false
+  end
+end
+
+export class EditorWindow extends View
+  document: Document
+
+  static state: EditorState = EditorState()
+
+  fn init(document: Document, key: string? = nil)
+    self.super(key)
+    self.document = document
+  end
+
+  -- It has a tick to run: the window is named after the document.
+  fn ticks() -> boolean
+    return true
+  end
+
+  fn tick(el: Element, dt: float) -> nil
+    local bag: table = el.data.scratch
+    if EditorWindow.state.stale then
+      EditorWindow.state.stale = false
+      el.markNeedsBuild()
+    end
+    local title = self.document.title()
+    if title != (bag.title as string?) then
+      bag.title = title
+      Window.setTitle(title)
+    end
+  end
+
+  fn body(context: BuildContext) -> View
+    local document = self.document
+    local state = EditorWindow.state
+    local panel = state.panel
+    local settings = state.settings
+    local revision = context.state("revision", 0)
+    local refresh = fn()
+      revision.set(revision.int(0) + 1)
+    end
+
+    -- What is done once the document's changes are out of the way.
+    local proceed = fn(what: string)
+      if what == "new" then
+        document.clear()
+      elseif what == "open" then
+        panel.askOpen(document.folder())
+      elseif what == "close" then
+        App.quit()
+      end
+      refresh()
+    end
+    -- Do `what`, asking first when there are changes to lose.
+    local leave = fn(what: string)
+      if document.edited() then
+        state.asking = true
+        state.next = what
+        refresh()
+      else
+        proceed(what)
+      end
+    end
+    local saveAs = fn()
+      local name = document.title()
+      if document.path == "" then
+        name = "Untitled.txt"
+      end
+      panel.askSave(document.folder(), name)
+      refresh()
+    end
+    local save = fn()
+      if document.path == "" then
+        saveAs()
+      else
+        document.save()
+        refresh()
+      end
+    end
+    local resize = fn(by: float)
+      settings.resize(by)
+      refresh()
+    end
+
+    local command = fn(e: KeyEvent) -> boolean
+      -- A sheet has the window while it is up.
+      if not e.command() or state.asking or panel.shown or state.settingsShown then
+        return false
+      end
+      match e.key
+        case "n" then leave("new")
+        case "o" then leave("open")
+        case "s" then
+          if e.shift then
+            saveAs()
+          else
+            save()
+          end
+        case "," then
+          state.settingsShown = true
+          refresh()
+        case "=" then resize(1.0)
+        case "-" then resize(-1.0)
+        case _ then
+          return false
+      end
+      return true
+    end
+
+    local toolbar = EditorBar(
+      document,
+      settings.wrap,
+      fn()
+        leave("new")
+      end,
+      fn()
+        leave("open")
+      end,
+      save,
+      fn()
+        resize(-1.0)
+      end,
+      fn()
+        resize(1.0)
+      end,
+      fn()
+        settings.wrap = not settings.wrap
+        settings.save()
+        refresh()
+      end
+    )
+    local page = Page(
+      document,
+      settings.size,
+      settings.wrap,
+      settings.fixed,
+      refresh,
+      command
+    )
+    local line = Spacer().frame(height: 1.0).background(Look.hairline)
+    local window = VStack(alignment: StackAlignment.Fill) do
+      show(toolbar)
+      show(line)
+      page.expanded()
+      EditorWindow.foot(document)
+    end
+
+    local layers: table<View> = {window}
+    if state.asking then
+      Table.insert(layers, KeepSheet(document.title(), fn()
+        -- Saved, then on; a document with no file is asked where
+        -- first, and what was to follow is dropped.
+        state.asking = false
+        if document.path == "" then
+          saveAs()
+        elseif document.save() then
+          proceed(state.next)
+        else
+          refresh()
+        end
+      end, fn()
+        state.asking = false
+        document.discard()
+        proceed(state.next)
+      end, fn()
+        state.asking = false
+        refresh()
+      end))
+    elseif state.settingsShown then
+      Table.insert(layers, SettingsSheet(settings, refresh, fn()
+        state.settingsShown = false
+        refresh()
+      end))
+    elseif panel.shown then
+      local chosen = fn(path: string)
+        if panel.saving then
+          -- Saved on the way out: out, now.
+          if document.saveAs(path) and state.next == "close" then
+            App.quit()
+          end
+        else
+          document.open(path)
+        end
+        refresh()
+      end
+      local cancelled = fn()
+        state.next = ""
+      end
+      Table.insert(layers, FilePanel(panel, chosen, cancelled, refresh))
+    end
+
+    local all = ZStack(children: layers)
+    local keys = KeyboardListener(onKeyDown: command, child: all)
+    return Theme(data: Look.theme(), child: keys)
+  end
+
+  -- Where the document is kept, or what just went wrong.
+  static fn foot(document: Document) -> View
+    local said = document.path
+    local ink = Look.dimText
+    if document.problem != "" then
+      said = document.problem
+      ink = Look.warning
+    elseif said == "" then
+      said = "Not saved yet"
+    end
+    local text = Text(said).font(11.0).foregroundStyle(ink).lineLimit(1)
+    local row = HStack(alignment: StackAlignment.Center) do
+      show(text)
+      Spacer()
+    end
+    local inset = EdgeInsets.symmetric(horizontal: 10.0)
+    return row.padding(insets: inset).frame(height: Look.footHeight).background(
+      Look.bar
+    )
+  end
+end

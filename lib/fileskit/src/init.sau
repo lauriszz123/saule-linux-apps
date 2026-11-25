@@ -1,0 +1,20 @@
+-- fileskit — what the apps that deal in files share: reading a folder,
+-- what a file is and how its size and date are said, doing things to
+-- files, the pictures of a folder and a document, and the panel an app
+-- asks "which file?" with.
+--
+-- Its own package, in `lib/`, so the file browser and the editor show
+-- the same files the same way. Saule has no call to ask what a file is
+-- (its size, whether it is a folder), so that is asked of the system's
+-- own `stat`, and copying and removing whole folders of its `cp` and
+-- `rm`: see `Shell`.
+
+export from Shell import *
+export from Entry import *
+export from Folder import *
+export from Places import *
+export from Drives import *
+export from Said import *
+export from FileOps import *
+export from FileIcon import *
+export from FilePanel import *

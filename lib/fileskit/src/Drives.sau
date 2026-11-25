@@ -1,0 +1,85 @@
+-- The drives that are plugged in: a USB stick, a card, an external disk.
+--
+-- On Saule Linux the system mounts them (saule-linux's
+-- `system/src/disks.rs`) and says where in a file, a line a drive, and
+-- lets go of one when asked to by a file dropped in its `requests`
+-- folder. Anywhere else there is no such file and no drives are listed.
+
+from Places import Place
+
+export class Drive
+  -- The kernel's name for it ("sdb1"): what it is ejected by.
+  device: string
+  path: string
+  label: string
+
+  fn init(device: string, path: string, label: string)
+    self.device = device
+    self.path = path
+    self.label = label
+  end
+end
+
+export class Drives
+  static local count: integer = 0
+
+  static fn folder() -> string
+    return Os.getenv("SAULE_SYSTEM") ?? "/run/saule/system"
+  end
+
+  -- The drives mounted now.
+  static fn list() -> table<Drive>
+    local out: table<Drive> = {}
+    local file = Io.open(Drives.folder() .. "/disks", IoMode.Read)
+    if file == nil then
+      return out
+    end
+    local text = file!.read("a") ?? ""
+    file!.close()
+    for line in String.split(text, "\n") do
+      local fields = String.split(line, "\t")
+      if fields[1] == "drive" and #fields >= 4 then
+        local label = fields[4]
+        if label == "" then
+          label = "USB Drive"
+        end
+        Table.insert(out, Drive(fields[2], fields[3], label))
+      end
+    end
+    return out
+  end
+
+  -- The drive `path` is on, if it is on one.
+  static fn of(path: string) -> Drive?
+    for drive in Drives.list() do
+      if path == drive.path or String.starts(path, drive.path .. "/") then
+        return drive
+      end
+    end
+    return nil
+  end
+
+  -- Ask for `drive` to be let go of: what was written to it is flushed,
+  -- and it can be pulled out once it has gone from the list.
+  static fn eject(drive: Drive) -> boolean
+    Drives.count += 1
+    local name = tostring(Os.timeMillis()) .. "-eject-" .. tostring(Drives.count)
+    local path = Drives.folder() .. "/requests/" .. name
+    local file = Io.open(path .. ".part", IoMode.Write)
+    if file == nil then
+      return false
+    end
+    file!.write("eject " .. drive.device .. "\n")
+    file!.close()
+    return Os.rename(path .. ".part", path)
+  end
+
+  -- Each drive as a place for a sidebar.
+  static fn places() -> table<Place>
+    local out: table<Place> = {}
+    for drive in Drives.list() do
+      Table.insert(out, Place(drive.label, drive.path, "disk"))
+    end
+    return out
+  end
+end

@@ -1,0 +1,26 @@
+--[[
+Terminal: a shell in a window, as a Mac's Terminal.
+
+  saule run .              in the window manager, or on a desktop
+  saule run . ~/Documents  starting in that folder
+
+The shell runs behind a pseudo-terminal (`Os.spawnPty`); what it writes
+is a stream of characters and escape sequences, which `model` turns into
+a screen of cells, and `views` draws.
+
+    model   the screen and its history (Screen), the escape sequences
+            that change it (Parser), the shell (Session), which bytes a
+            key sends (Keys), the colours (Colours)
+    views   the terminal itself: drawing, the keyboard, the selection
+]]
+
+from TerminalApp import TerminalApp
+
+class Main
+  static fn main()
+    local app = TerminalApp()
+    app.run()
+    -- The window closed with the shell still running: hang up.
+    app.session.close()
+  end
+end

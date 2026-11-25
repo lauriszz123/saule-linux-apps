@@ -1,0 +1,28 @@
+--[[
+Editor: plain text in a window, as a Mac's TextEdit in its plain-text
+mode.
+
+  saule run .              an empty document
+  saule run . notes.txt    that file (what the file browser does when a
+                           text file is opened)
+
+    model   the document: its text, where it is kept, whether it has
+            changes not yet saved
+    views   the window: a toolbar, the page, and the sheets over it (the
+            open and save panel from fileskit, "save the changes?")
+
+Closing the window with changes not saved asks whether to save them.
+Where the window is closed without the app being asked (on another
+system's desktop), what was typed is kept instead: a document with a
+file is saved to it, and one that never had is kept in Documents.
+]]
+
+from EditorApp import EditorApp
+
+class Main
+  static fn main()
+    local app = EditorApp()
+    app.run()
+    app.document.keep()
+  end
+end
