@@ -125,6 +125,57 @@ export class DisplaysPane extends View
         )
       )
     end
+
+    -- Left alone: when the screen dims, and when it locks. On Saule
+    -- Linux's own screen; nested, the other desktop does its own.
+    if machine.managed and settings.info.host == "saule" then
+      local options = settings.options
+      local changed = self.changed
+      local dim = Segmented(
+        {"0", "60", "120", "300", "600"},
+        {"Never", "1 min", "2 min", "5 min", "10 min"},
+        tostring(options.dimAfter),
+        fn(choice: string)
+          options.dimAfter = (choice as integer?) ?? 0
+          changed()
+        end
+      )
+      local rows: table<View> = {Row("Dim the screen after", dim)}
+      -- How dim: how much of its brightness the screen keeps. And
+      -- whether what is on it is blurred as it dims.
+      local how = Segmented(
+        {"10", "30", "50", "70"},
+        {"10%", "30%", "50%", "70%"},
+        tostring(options.dimTo),
+        fn(choice: string)
+          options.dimTo = (choice as integer?) ?? 30
+          changed()
+        end
+      )
+      Table.insert(rows, Row("Dim to", how))
+      local blur = Toggle(value: options.dimBlur, onChanged: fn(on: boolean)
+        options.dimBlur = on
+        changed()
+      end)
+      Table.insert(rows, Row("Blur the screen as it dims", blur))
+      local said = "Counted from the last key pressed or the last time the pointer moved."
+      if machine.hasPassword then
+        local lock = Segmented(
+          {"0", "120", "300", "600", "1800"},
+          {"Never", "2 min", "5 min", "10 min", "30 min"},
+          tostring(options.lockAfter),
+          fn(choice: string)
+            options.lockAfter = (choice as integer?) ?? 0
+            changed()
+          end
+        )
+        Table.insert(rows, Row("Lock the screen after", lock))
+      else
+        said ..= " With a login password, the screen can lock too."
+      end
+      Table.insert(items, Group("When Left Alone", rows))
+      Table.insert(items, Said.note(said))
+    end
     return Said.pane(items)
   end
 end
