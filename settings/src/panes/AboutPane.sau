@@ -45,11 +45,41 @@ export class AboutPane extends View
 
   -- Everything the pane says of `info`, to tell when it changed.
   static fn said(info: SystemInfo) -> string
-    local values: table<string> = {info.saule}
+    local values: table<string> = {
+      AboutPane.title(info),
+      AboutPane.version(info),
+    }
     for fact in AboutPane.facts(info) do
       Table.insert(values, fact[2])
     end
     return String.join("\n", values)
+  end
+
+  -- The system the pane is about: Saule Linux on its own screen; in a
+  -- window on another system, that one ("macOS", "Windows 11 Pro").
+  static fn title(info: SystemInfo) -> string
+    if info.host != "saule" and info.system != "" then
+      return info.system
+    end
+    return "Saule Linux"
+  end
+
+  -- Under it, Saule's version; in a window on another system, that
+  -- system's version first.
+  static fn version(info: SystemInfo) -> string
+    local saule = "Saule " .. info.saule
+    if info.host != "saule" and info.systemVersion != "" then
+      return "Version " .. info.systemVersion .. " · " .. saule
+    end
+    return saule
+  end
+
+  -- "Apple M1, 8 threads", as About This System says it.
+  static fn processor(info: SystemInfo) -> string
+    if info.processor != "" and info.cores > 1 then
+      return info.processor .. ", " .. info.cores .. " threads"
+    end
+    return info.processor
   end
 
   -- The facts shown, in order: each a name and its value.
@@ -60,6 +90,7 @@ export class AboutPane extends View
     end
     return {
       {"Computer", info.machine},
+      {"Processor", AboutPane.processor(info)},
       {"Graphics", info.graphics},
       {"Window manager", info.wm},
       {"Kernel", info.kernel},
@@ -75,8 +106,9 @@ export class AboutPane extends View
     local settings = self.settings
     local info = settings.info
 
-    local name = Text("Saule Linux").font(18.0).foregroundStyle(Style.text)
-    local version = "Saule " .. info.saule
+    local system = AboutPane.title(info)
+    local name = Text(system).font(18.0).foregroundStyle(Style.text)
+    local version = AboutPane.version(info)
     local said = Text(version).font(12.0).foregroundStyle(Style.dimText)
 
     local rows: table<View> = {}

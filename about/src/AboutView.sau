@@ -16,6 +16,10 @@
 --         Display  1024 × 600
 --  Window manager  0.1.0
 --
+-- Run in a window on another system (macOS, Windows, a Linux desktop),
+-- the name and version at the top are that system's ("macOS", "Version
+-- 26.2"), and Saule's own version is a fact below them.
+--
 -- Every value is what the window manager read from the system (see its
 -- `SettingsService.about`); one it couldn't find is a dash. It is asked
 -- again every second while the window is open, so the memory in use and
@@ -72,12 +76,35 @@ export class AboutView extends View
     for fact in AboutView.facts(info) do
       Table.insert(values, fact[2])
     end
-    return info.saule .. "\n" .. String.join("\n", values)
+    local top = AboutView.title(info) .. "\n" .. AboutView.version(info)
+    return top .. "\n" .. String.join("\n", values)
+  end
+
+  -- Hosted: the window manager runs in a window on another system, which
+  -- is the one the window is about.
+  static fn hosted(info: SystemInfo) -> boolean
+    return info.host != "saule" and info.system != ""
+  end
+
+  -- The name at the top: the system's.
+  static fn title(info: SystemInfo) -> string
+    if AboutView.hosted(info) then
+      return info.system
+    end
+    return "Saule Linux"
+  end
+
+  -- The version under it: the system's, which on Saule Linux is Saule's.
+  static fn version(info: SystemInfo) -> string
+    if AboutView.hosted(info) then
+      return info.systemVersion
+    end
+    return info.saule
   end
 
   -- The facts shown, in order: each a name and its value.
   static fn facts(info: SystemInfo) -> table<table<string>>
-    return {
+    local facts = {
       {"Computer", info.machine},
       {"Processor", AboutView.processor(info)},
       {"Graphics", info.graphics},
@@ -87,6 +114,11 @@ export class AboutView extends View
       {"Display", AboutView.display(info)},
       {"Window manager", info.wm},
     }
+    -- Not at the top, where the system's version is.
+    if AboutView.hosted(info) then
+      Table.insert(facts, {"Saule", info.saule})
+    end
+    return facts
   end
 
   fn body(context: BuildContext) -> View
@@ -94,8 +126,9 @@ export class AboutView extends View
     local text = AboutView.text
     local dim = AboutView.dimText
 
-    local version = "Version " .. AboutView.dash(info.saule)
-    local name = Text("Saule Linux").font(20.0).foregroundStyle(text)
+    local version = "Version " .. AboutView.dash(AboutView.version(info))
+    local title = AboutView.title(info)
+    local name = Text(title).font(20.0).foregroundStyle(text)
     local said = Text(version).font(11.0).foregroundStyle(dim)
     local rows: table<View> = {}
     for fact in AboutView.facts(info) do

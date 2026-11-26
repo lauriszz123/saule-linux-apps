@@ -44,38 +44,40 @@ export class DisplaysPane extends View
 
     local items: table<View> = {PaneTitle("Displays"), Group("Display", rows)}
 
-    -- Every graphics chip, and which of them the screen is drawn by.
-    if #info.cards > 0 then
-      local chips: table<View> = {}
-      for card in info.cards do
-        local said = "No driver: not used"
-        if card.driver != "" and card.primary then
-          said = "Drives the screen"
-        elseif card.driver != "" then
-          said = "Has a driver"
-        elseif card.primary then
-          said = "Drives the screen, with no driver of its own"
-        end
-        Table.insert(chips, Row(card.name, Said(said)))
+    -- Every graphics chip the system lists, and what the screen is drawn
+    -- by: on every system, so a problem shows wherever it is met, in a
+    -- window on a desktop as on Saule Linux's own screen.
+    local chips: table<View> = {}
+    for card in info.cards do
+      local said = "No driver: not used"
+      if card.driver != "" and card.primary then
+        said = "Drives the screen"
+      elseif card.driver != "" then
+        said = "Has a driver"
+      elseif card.primary then
+        said = "Drives the screen, with no driver of its own"
       end
-      local drawn = "The processor"
-      if info.renderer != "" then
-        drawn = info.renderer
-      end
-      Table.insert(chips, Row("Drawn by", Said(drawn)))
-      Table.insert(items, Group("Graphics", chips))
-      if info.renderer == "" then
-        Table.insert(
-          items,
-          Said.note(
-            "The processor is drawing the screen, which is slower: the system has no working driver for a graphics chip here.",
-            warning: true
-          )
+      Table.insert(chips, Row(card.name, Said(said)))
+    end
+    local drawn = "The processor"
+    if info.renderer != "" then
+      drawn = info.renderer
+    end
+    Table.insert(chips, Row("Drawn by", Said(drawn)))
+    Table.insert(items, Group("Graphics", chips))
+    if info.renderer == "" then
+      Table.insert(
+        items,
+        Said.note(
+          "The processor is drawing the screen, which is slower.",
+          warning: true
         )
-        if info.rendererProblem != "" then
-          Table.insert(items, Said.note("Why: " .. info.rendererProblem))
-        end
+      )
+      local why = info.rendererProblem
+      if why == "" then
+        why = "no graphics chip here has a driver that works."
       end
+      Table.insert(items, Said.note("Why: " .. why))
     end
 
     -- How large everything is drawn: on Saule Linux's own screen. Nested
