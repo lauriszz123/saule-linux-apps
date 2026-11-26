@@ -53,6 +53,16 @@ export class MousePane extends View
     local pointerRows: table<View> = {}
     if #machine.devices == 0 or machine.has("mouse") then
       Table.insert(pointerRows, Row("Pointer speed", speed))
+      -- Further for the same movement made faster: precise when slow,
+      -- across the screen without lifting the mouse when quick.
+      local acceleration = Toggle(
+        value: options.pointerAcceleration,
+        onChanged: fn(on: boolean)
+          options.pointerAcceleration = on
+          changed()
+        end
+      )
+      Table.insert(pointerRows, Row("Pointer acceleration", acceleration))
     end
     Table.insert(pointerRows, Row("Primary button", primary))
     local host = MousePane.hostName(settings.info.host)

@@ -39,6 +39,17 @@ export class TrackpadPane extends View
       options.tapToClick = on
       changed()
     end)
+    local drag = Toggle(value: options.tapAndDrag, onChanged: fn(on: boolean)
+      options.tapAndDrag = on
+      changed()
+    end)
+    local inertia = Toggle(
+      value: options.trackpadInertia,
+      onChanged: fn(on: boolean)
+        options.trackpadInertia = on
+        changed()
+      end
+    )
     local scroll = SliderControl(
       options.trackpadScrollSpeed,
       0.25,
@@ -64,16 +75,18 @@ export class TrackpadPane extends View
       Group("Point & Click", {
         Row("Tracking speed", speed),
         Row("Tap to click", tap),
+        Row("Tap and drag", drag),
       }),
       Said.note(
-        "A tap with one finger clicks, with two is the secondary click, and with three the middle one. Pressing the pad with two fingers on it is the secondary click too."
+        "A tap with one finger clicks, with two is the secondary click, and with three the middle one. Pressing the pad with two fingers on it is the secondary click too. With tap and drag, a tap and then a touch drags what was tapped until the finger lifts."
       ),
       Group("Scroll", {
         Row("Scroll speed", scroll),
         Row("Natural scrolling", natural),
+        Row("Inertia", inertia),
       }),
       Said.note(
-        "Two fingers scroll. With natural scrolling, what is scrolled moves the way the fingers do."
+        "Two fingers scroll. With natural scrolling, what is scrolled moves the way the fingers do. With inertia, a scroll let go of while moving carries on and slows down; a touch or a key stops it."
       ),
     }
     local devices = Said.devices(settings.machine, "touchpad", "trackpad")

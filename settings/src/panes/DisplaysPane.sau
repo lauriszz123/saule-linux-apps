@@ -37,11 +37,46 @@ export class DisplaysPane extends View
       local size = info.screenWidth .. " × " .. info.screenHeight
       Table.insert(rows, Row("Resolution", Said(size)))
     end
-    if info.graphics != "" then
+    -- With the chips listed below, their names are not said twice.
+    if info.graphics != "" and #info.cards == 0 then
       Table.insert(rows, Row("Graphics", Said(info.graphics)))
     end
 
     local items: table<View> = {PaneTitle("Displays"), Group("Display", rows)}
+
+    -- Every graphics chip, and which of them the screen is drawn by.
+    if #info.cards > 0 then
+      local chips: table<View> = {}
+      for card in info.cards do
+        local said = "No driver: not used"
+        if card.driver != "" and card.primary then
+          said = "Drives the screen"
+        elseif card.driver != "" then
+          said = "Has a driver"
+        elseif card.primary then
+          said = "Drives the screen, with no driver of its own"
+        end
+        Table.insert(chips, Row(card.name, Said(said)))
+      end
+      local drawn = "The processor"
+      if info.renderer != "" then
+        drawn = info.renderer
+      end
+      Table.insert(chips, Row("Drawn by", Said(drawn)))
+      Table.insert(items, Group("Graphics", chips))
+      if info.renderer == "" then
+        Table.insert(
+          items,
+          Said.note(
+            "The processor is drawing the screen, which is slower: the system has no working driver for a graphics chip here.",
+            warning: true
+          )
+        )
+        if info.rendererProblem != "" then
+          Table.insert(items, Said.note("Why: " .. info.rendererProblem))
+        end
+      end
+    end
 
     -- How large everything is drawn: on Saule Linux's own screen. Nested
     -- in another desktop, that desktop decides.

@@ -5,7 +5,15 @@
 -- Each picture is drawn into an image once and kept, by name and size: a
 -- landscape takes many shapes and blurs, which a list of them redrawn
 -- every frame would feel. An animated one is drawn again a few times a
--- second, as the window manager draws it.
+-- second, and small, a sixteenth of the tile's pixels, then stretched
+-- into the tile's image: it is washes of colour, which stretched look as
+-- they would drawn whole, and five of them worked out over every pixel
+-- twenty times a second was all a netbook's processor could do.
+--
+-- A tile is drawn at whole pixels, wherever the layout put it: text above
+-- it has a height that is not a whole number, and an image drawn between
+-- pixels is worked out a pixel at a time where at whole pixels it is
+-- copied a row at a time.
 --
 -- Only one picture is drawn for the first time in any frame. A pane of
 -- twenty of them drawn at once is most of a second on a netbook, with the
@@ -26,9 +34,16 @@ export class WallpaperTile extends View
 
   -- How often an animated one is drawn again, a second; when it last
   -- was, and the time it was drawn as.
-  static frameRate: float = 20.0
+  static frameRate: float = 10.0
   static local last: float = 0.0
   static local time: float = 0.0
+
+  -- The small images animated ones are worked out in, by name and size;
+  -- the time each tile's picture was last drawn as; and how many of the
+  -- tile's pixels each way one of a small image's stands for.
+  static local small: table<string, Canvas> = {}
+  static local drawnAs: table<string, float> = {}
+  static shrink: integer = 4
 
   -- When a picture was last drawn for the first time, and how long after
   -- that the next may be: less than a frame, so it is the next frame's.
@@ -46,9 +61,13 @@ export class WallpaperTile extends View
     return constraints.biggest()
   end
 
-  -- It has a tick to run: see `View.ticks`.
+  -- It has a tick to run: see `View.ticks`. Not where the processor
+  -- draws the window: every frame of a thumbnail moving is the whole
+  -- window drawn again, a tenth of a second each on a netbook, and the
+  -- pane stays as slow as that for as long as it is open. There an
+  -- animated wallpaper's picture is one moment of it.
   fn ticks() -> boolean
-    return WallpaperArt.moves(self.preset.name)
+    return WallpaperArt.moves(self.preset.name) and Graphics.getRenderer() != ""
   end
 
   -- Every animated tile ticks: the first one due draws them all again.
@@ -61,7 +80,9 @@ export class WallpaperTile extends View
     end
   end
 
-  fn paint(el: Element, x: float, y: float) -> nil
+  fn paint(el: Element, at: float, top: float) -> nil
+    local x = Math.floor(at + 0.5) as float
+    local y = Math.floor(top + 0.5) as float
     local w = el.size.width
     local h = el.size.height
     local r = 7.0
@@ -103,6 +124,10 @@ export class WallpaperTile extends View
     if kept != nil and not moves then
       return kept!
     end
+    -- An animated one drawn as it is at this moment already: as it is.
+    if kept != nil and WallpaperTile.drawnAs[key] == WallpaperTile.time then
+      return kept!
+    end
     if kept == nil then
       local since = Timer.getTime() - WallpaperTile.firstDrawn
       if WallpaperTile.firstDrawn >= 0.0 and since < WallpaperTile.frameGap then
@@ -113,20 +138,53 @@ export class WallpaperTile extends View
     local screen = Graphics.getCanvas()
     local sx, sy, sw, sh = Graphics.getScissor()
     Graphics.push("all")
-    Graphics.setCanvas(image)
     Graphics.origin()
     Graphics.setScissor()
-    WallpaperArt.paint(
-      preset.name,
-      0.0,
-      0.0,
-      w as float,
-      h as float,
-      WallpaperTile.time
-    )
+    if moves then
+      -- Worked out small, and stretched over the tile's image.
+      local by = WallpaperTile.shrink as float
+      local iw = Math.max(Math.ceil((w as float) / by), 1)
+      local ih = Math.max(Math.ceil((h as float) / by), 1)
+      local little = WallpaperTile.small[key]
+      if little == nil then
+        little = Graphics.newCanvas(iw, ih)
+        WallpaperTile.small[key] = little!
+      end
+      Graphics.setCanvas(little!)
+      WallpaperArt.paint(
+        preset.name,
+        0.0,
+        0.0,
+        iw as float,
+        ih as float,
+        WallpaperTile.time
+      )
+      Graphics.setCanvas(image)
+      Graphics.setColor(1.0, 1.0, 1.0, 1.0)
+      Graphics.setBlendMode("replace")
+      Graphics.draw(
+        little!,
+        0.0,
+        0.0,
+        0.0,
+        (w as float) / (iw as float),
+        (h as float) / (ih as float)
+      )
+    else
+      Graphics.setCanvas(image)
+      WallpaperArt.paint(
+        preset.name,
+        0.0,
+        0.0,
+        w as float,
+        h as float,
+        WallpaperTile.time
+      )
+    end
     Graphics.pop()
     Graphics.setCanvas(screen)
     Graphics.setScissor(sx, sy, sw, sh)
+    WallpaperTile.drawnAs[key] = WallpaperTile.time
     WallpaperTile.drawn[key] = image
     if kept == nil then
       WallpaperTile.firstDrawn = Timer.getTime()

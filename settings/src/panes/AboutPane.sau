@@ -4,10 +4,10 @@
 -- it is now.
 
 from uikit import *
-from "wmapi" import SystemInfo
+from "wmapi" import SystemInfo, WmSettings
 from model import SystemSettings
 from theme import Style
-from views import Group, PaneTitle, Row
+from views import Group, PaneTitle, Row, RowButton, Said
 
 export class AboutPane extends View
   settings: SystemSettings
@@ -72,7 +72,8 @@ export class AboutPane extends View
   end
 
   fn body(context: BuildContext) -> View
-    local info = self.settings.info
+    local settings = self.settings
+    local info = settings.info
 
     local name = Text("Saule Linux").font(18.0).foregroundStyle(Style.text)
     local version = "Saule " .. info.saule
@@ -83,15 +84,23 @@ export class AboutPane extends View
       Table.insert(rows, AboutPane.fact(fact[1], fact[2]))
     end
 
-    return VStack(alignment: StackAlignment.Fill, spacing: 18.0) do
-      PaneTitle("About")
-      VStack(alignment: StackAlignment.Leading, spacing: 4.0) do
-        show(name)
-        show(said)
-      end
-      Group("This system", rows)
-      Spacer()
+    local title = VStack(alignment: StackAlignment.Leading, spacing: 4.0) do
+      show(name)
+      show(said)
     end
+    local report = RowButton("Save to a USB Drive", fn()
+      settings.tell(fn(wm: WmSettings)
+        wm.saveReport()
+      end)
+    end)
+    -- In a pane that scrolls, as the others are: on a netbook's screen
+    -- the facts alone are taller than the window.
+    return Said.pane({
+      PaneTitle("About"),
+      title,
+      Group("This system", rows),
+      Group("When something does not work", {Row("A report of this computer", report)}),
+    })
   end
 
   -- Memory, in kB: what is in use now, of all there is: "0.4 GB used of

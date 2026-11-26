@@ -4,7 +4,7 @@
 from uikit import *
 from model import SystemSettings
 from theme import Style
-from views import Group, PaneTitle, Row, Segmented, SliderControl
+from views import Group, PaneTitle, Row, Said, Segmented, SliderControl
 
 export class WindowsPane extends View
   settings: SystemSettings
@@ -73,24 +73,18 @@ export class WindowsPane extends View
       hint = hint .. " " .. String.upper(String.join("+", keys)) .. " switches."
     end
 
-    return VStack(alignment: StackAlignment.Fill, spacing: 18.0) do
-      PaneTitle("Desktop & Windows")
-      Group(
-        "Windows",
-        {Row("Arrange windows", arrange), Row("Show the Dock", dock)}
-      )
-      WindowsPane.note(hint)
-      Group(
-        "Tiling",
-        {
-          Row("Space between windows", gap),
-          Row("Grab area beside a gap", grab),
-          Row("Resize step", resize),
-        }
-      )
-      Group("New windows", {Row("Open next to the focused one", where)})
-      Spacer()
-    end
+    -- In a pane that scrolls: taller than a netbook's screen leaves it.
+    return Said.pane({
+      PaneTitle("Desktop & Windows"),
+      Group("Windows", {Row("Arrange windows", arrange), Row("Show the Dock", dock)}),
+      WindowsPane.note(hint),
+      Group("Tiling", {
+        Row("Space between windows", gap),
+        Row("Grab area beside a gap", grab),
+        Row("Resize step", resize),
+      }),
+      Group("New windows", {Row("Open next to the focused one", where)}),
+    })
   end
 
   -- Words under a group.
