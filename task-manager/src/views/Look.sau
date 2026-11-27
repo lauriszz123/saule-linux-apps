@@ -1,0 +1,49 @@
+-- Task Manager's colours and sizes: dark, as the system is, and the
+-- same as the file browser's, so the two sit side by side as one.
+
+from uikit import Color, TextStyle, ThemeData
+
+export class Look
+  static window: Color = Color(0.15, 0.15, 0.17)
+  static bar: Color = Color(0.19, 0.19, 0.21)
+  static hairline: Color = Color(0.0, 0.0, 0.0, 0.45)
+  static stripe: Color = Color(1.0, 1.0, 1.0, 0.03)
+  static text: Color = Color(0.95, 0.95, 0.97)
+  static dimText: Color = Color(1.0, 1.0, 1.0, 0.55)
+  static warning: Color = Color(1.0, 0.72, 0.42)
+  static accent: Color = Color(0.25, 0.48, 0.90)
+  static chosen: Color = Color(0.25, 0.48, 0.90)
+  static button: Color = Color(1.0, 1.0, 1.0, 0.10)
+  static buttonOn: Color = Color(1.0, 1.0, 1.0, 0.26)
+  static well: Color = Color(0.0, 0.0, 0.0, 0.25)
+  static card: Color = Color(0.19, 0.19, 0.21)
+  static edge: Color = Color(1.0, 1.0, 1.0, 0.10)
+  static screen: Color = Color(0.0, 0.0, 0.0, 0.35)
+  static danger: Color = Color(0.86, 0.30, 0.30)
+
+  -- What each of the three graphs is drawn in.
+  static processor: Color = Color(0.29, 0.56, 0.98)
+  static memory: Color = Color(0.30, 0.80, 0.48)
+  static graphics: Color = Color(0.72, 0.52, 0.96)
+  static running: Color = Color(0.30, 0.80, 0.48)
+
+  static barHeight: float = 40.0
+  static footHeight: float = 24.0
+  static rowHeight: float = 24.0
+
+  -- A window narrower than this lays the overview's three cards one
+  -- under another and leaves the search out of the bar.
+  static narrowBelow: float = 620.0
+
+  static fn theme() -> ThemeData
+    return ThemeData(
+      background: Look.window,
+      surface: Look.card,
+      border: Look.edge,
+      text: Look.text,
+      textMuted: Look.dimText,
+      primary: Look.accent,
+      body: TextStyle(Look.text, 13.0)
+    )
+  end
+end

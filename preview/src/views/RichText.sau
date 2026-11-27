@@ -1,0 +1,261 @@
+-- A paragraph whose words are not all of a kind: plain, bold, italic,
+-- code and links, broken into lines where the width ends.
+--
+-- uikit's `Text` is of one style. This lays the runs out a word at a
+-- time, each measured in its own style, and keeps what it worked out
+-- until the width or the document changes: measuring is a call into
+-- Shine a word.
+
+from shine import Graphics
+from uikit import *
+from model import Run
+from Look import Look
+
+-- What was worked out for one width: each piece of text, where it goes
+-- and of what kind it is (bold 1, italic 2, code 4, link 8, added).
+class Laid
+  key: string
+  height: float
+  texts: table<string>
+  kinds: table<integer>
+  xs: table<float>
+  ys: table<float>
+  widths: table<float>
+
+  fn init(key: string)
+    self.key = key
+    self.height = 0.0
+    self.texts = {}
+    self.kinds = {}
+    self.xs = {}
+    self.ys = {}
+    self.widths = {}
+  end
+end
+
+export class RichText extends View
+  runs: table<Run>
+  size: float
+  ink: Color
+  -- Everything bold: a heading, the head of a table.
+  heavy: boolean
+  -- What tells this paragraph from another, and one document from the
+  -- next: what is kept is kept under it.
+  id: string
+
+  fn init(
+    runs: table<Run>,
+    id: string,
+    size: float = 14.0,
+    ink: Color? = nil,
+    heavy: boolean = false,
+    key: string? = nil
+  )
+    self.super(key)
+    self.runs = runs
+    self.id = id
+    self.size = size
+    self.ink = ink ?? Look.text
+    self.heavy = heavy
+  end
+
+  -- A run's kind, as a number.
+  local fn kindOf(run: Run) -> integer
+    local kind = 0
+    if run.bold or self.heavy then
+      kind = kind + 1
+    end
+    if run.italic then
+      kind = kind + 2
+    end
+    if run.code then
+      kind = kind + 4
+    end
+    if run.link then
+      kind = kind + 8
+    end
+    return kind
+  end
+
+  -- The style text of `kind` is measured and drawn in.
+  local fn styleOf(kind: integer) -> TextStyle
+    local ink = self.ink
+    if kind >= 8 then
+      ink = Look.link
+    end
+    if kind % 8 >= 4 then
+      return TextStyle(ink, self.size * 0.92, TextStyle.fixedFace())
+    end
+    if kind % 2 == 1 then
+      return TextStyle(ink, self.size, Look.boldFace())
+    end
+    return TextStyle(ink, self.size)
+  end
+
+  -- How tall a line is: the plain text's own height and a little air.
+  local fn lineHeight() -> float
+    return Math.floor(TextStyle(self.ink, self.size).lineHeight() * 1.3 + 0.5) as float
+  end
+
+  -- Lay the runs out in `width`.
+  local fn lay(width: float, key: string) -> Laid
+    local laid = Laid(key)
+    local line = self.lineHeight()
+    local x = 0.0
+    local y = 0.0
+    -- Whether a space lies between the last word placed and the next.
+    local spaced = false
+    for run in self.runs do
+      local kind = self.kindOf(run)
+      local style = self.styleOf(kind)
+      local space = style.measure(" ").width
+      -- The piece being built: words of this run on this line.
+      local piece = ""
+      local pieceX = 0.0
+      local pieceWidth = 0.0
+      local words = String.split(run.text, " ")
+      for j = 1, #words do
+        local word = words[j]
+        if j > 1 then
+          spaced = true
+        end
+        if word != "" then
+          if piece != "" then
+            local longer = piece .. " " .. word
+            if not spaced then
+              longer = piece .. word
+            end
+            local across = style.measure(longer).width
+            if pieceX + across <= width then
+              piece = longer
+              pieceWidth = across
+              x = pieceX + across
+            else
+              -- The line is full: what was built stays on it, and the
+              -- word starts the next.
+              Table.insert(laid.texts, piece)
+              Table.insert(laid.kinds, kind)
+              Table.insert(laid.xs, pieceX)
+              Table.insert(laid.ys, y)
+              Table.insert(laid.widths, pieceWidth)
+              y = y + line
+              piece = style.truncated(word, width)
+              pieceX = 0.0
+              pieceWidth = style.measure(piece).width
+              x = pieceWidth
+            end
+          else
+            local start = x
+            if spaced and x > 0.0 then
+              start = x + space
+            end
+            local across = style.measure(word).width
+            if start + across > width and x > 0.0 then
+              start = 0.0
+              y = y + line
+            end
+            piece = word
+            if across > width then
+              piece = style.truncated(word, width)
+              across = style.measure(piece).width
+            end
+            pieceX = start
+            pieceWidth = across
+            x = start + across
+          end
+          spaced = false
+        end
+      end
+      if piece != "" then
+        Table.insert(laid.texts, piece)
+        Table.insert(laid.kinds, kind)
+        Table.insert(laid.xs, pieceX)
+        Table.insert(laid.ys, y)
+        Table.insert(laid.widths, pieceWidth)
+      end
+    end
+    laid.height = y + line
+    return laid
+  end
+
+  -- What was worked out for `width`, kept on the element.
+  local fn laidFor(el: Element, width: float) -> Laid
+    local key = self.id .. "|" .. width .. "|" .. self.size
+    local kept = el.data.scratch.laid as Laid?
+    if kept != nil and kept!.key == key then
+      return kept!
+    end
+    local laid = self.lay(width, key)
+    el.data.scratch.laid = laid
+    return laid
+  end
+
+  fn layout(el: Element, constraints: Constraints) -> Size
+    local width = constraints.maxWidth
+    if not constraints.hasBoundedWidth() then
+      width = 100000.0
+    end
+    local laid = self.laidFor(el, width)
+    local widest = 0.0
+    for i = 1, #laid.xs do
+      widest = Math.max(widest, laid.xs[i] + laid.widths[i])
+    end
+    if constraints.hasBoundedWidth() then
+      widest = width
+    end
+    return constraints.constrain(Size(widest, laid.height))
+  end
+
+  fn paint(el: Element, x: float, y: float) -> nil
+    local laid = self.laidFor(el, el.size.width)
+    local line = self.lineHeight()
+    local lastKind = -1
+    local style = self.styleOf(0)
+    local lift = 0.0
+    for i = 1, #laid.texts do
+      local kind = laid.kinds[i]
+      if kind != lastKind then
+        style = self.styleOf(kind)
+        lift = Math.floor((line - style.lineHeight()) / 2.0) as float
+        lastKind = kind
+      end
+      local left = x + laid.xs[i]
+      local top = y + laid.ys[i]
+      if kind % 8 >= 4 then
+        -- Code sits on a ground of its own.
+        Look.well.apply()
+        Graphics.rectangle(
+          "fill",
+          left - 2.0,
+          top + 1.0,
+          laid.widths[i] + 4.0,
+          line - 2.0,
+          3.0
+        )
+      end
+      if kind % 4 >= 2 then
+        RichText.slanted(style, laid.texts[i], left, top + lift)
+      else
+        style.draw(laid.texts[i], left, top + lift)
+      end
+      if kind >= 8 then
+        Look.link.apply()
+        Graphics.rectangle("fill", left, top + line - 4.0, laid.widths[i], 1.0)
+      end
+    end
+  end
+
+  -- Italic, with no italic typeface to draw it in: the upright one,
+  -- leant over. Drawn in the screen's own pixels, as all text is.
+  static fn slanted(style: TextStyle, text: string, x: float, y: float) -> nil
+    style.apply()
+    local tall = style.lineHeight() * Display.scale()
+    local px: float, py: float = Graphics.transformPoint(x, y)
+    Graphics.push()
+    Graphics.origin()
+    Graphics.translate(px, py + tall)
+    Graphics.shear(-0.2, 0.0)
+    Graphics.print(text, 0.0, -tall)
+    Graphics.pop()
+  end
+end

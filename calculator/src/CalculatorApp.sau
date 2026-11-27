@@ -1,0 +1,27 @@
+-- Calculator as a uikit app: one small window.
+
+from uikit import *
+from "wmapi" import WmApp
+from Calculator import Calculator
+from CalculatorView import CalculatorView
+
+export class CalculatorApp extends App
+  calculator: Calculator
+
+  fn init()
+    self.super()
+    self.calculator = Calculator()
+    WmApp.describe("Calculator", Project.version, "Perform basic calculations.")
+  end
+
+  fn body() -> Scene
+    return WindowGroup(
+      title: "Calculator",
+      width: 280,
+      height: 420,
+      background: CalculatorView.window
+    ) do
+      CalculatorView(self.calculator)
+    end
+  end
+end

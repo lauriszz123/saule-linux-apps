@@ -87,8 +87,8 @@ export class KeyboardPane extends View
     )
     local now = KeyActions.split(settings.keys.mod ?? "")
     local modRows: table<View> = {
-      Row("Hold for every shortcut", mod),
-      Row("Now", Shortcut(now, color: Style.text, size: 11.0)),
+      Row("Modifier key", mod),
+      Row("Current", Shortcut(now, color: Style.text, size: 11.0)),
     }
 
     local rows = fn(actions: table<KeyAction>) -> table<View>
@@ -131,10 +131,10 @@ export class KeyboardPane extends View
       Table.insert(groups, Group("Keyboards", keyboards))
     end
     local shortcuts: table<View> = {
-      Group("Shortcut key", modRows),
+      Group("Shortcut Modifier", modRows),
       Group("System", rows(KeyActions.system)),
       Group("Windows", rows(KeyActions.windows)),
-      Group("Moving around", KeyboardPane.fixedRows(now)),
+      Group("Navigation", KeyboardPane.fixedRows(now)),
       KeyboardPane.footer(restore),
     }
     for view in shortcuts do
@@ -206,7 +206,7 @@ export class KeyboardPane extends View
         query.set(text)
       end
       local search = Field(query.text(""), "Search for a layout", typed)
-      Table.insert(rows, Row("Add a layout", search))
+      Table.insert(rows, Row("Add layout", search))
     end
     local out: table<View> = {Group("Layouts", rows)}
 
@@ -254,15 +254,15 @@ export class KeyboardPane extends View
         end
       end
       if #matches > 0 then
-        Table.insert(out, Group("Found", matches))
+        Table.insert(out, Group("Results", matches))
       else
-        Table.insert(out, Said.note("No layout by that name."))
+        Table.insert(out, Said.note("No matching layout."))
       end
     elseif #chosen > 1 then
       Table.insert(
         out,
         Said.note(
-          "The first is the one the computer starts in. The shortcut below goes round them, and the bar shows which is in use."
+          "The first layout is used at startup. The shortcut below switches between layouts, and the active layout is shown in the menu bar."
         )
       )
     end
@@ -297,7 +297,7 @@ export class KeyboardPane extends View
 
     local keys = KeyboardPane.keysOf(e)
     if not KeyActions.valid(keys) then
-      note.set("Hold Ctrl, Alt or Super with it")
+      note.set("Include Ctrl, Alt or Super")
       return true
     end
     -- The keys it has already: nothing to change.
@@ -370,10 +370,10 @@ export class KeyboardPane extends View
       return Shortcut(all, color: Style.dimText, size: 11.0)
     end
     local rows: table<View> = {
-      Row("Move to the window that way", with({"arrows"})),
-      Row("Swap with the window that way", with({"shift", "arrows"})),
-      Row("Show a workspace", with({"1–4"})),
-      Row("Send the window to a workspace", with({"shift", "1–4"})),
+      Row("Focus window in direction", with({"arrows"})),
+      Row("Swap window in direction", with({"shift", "arrows"})),
+      Row("Switch to workspace", with({"1–4"})),
+      Row("Move window to workspace", with({"shift", "1–4"})),
     }
     return rows
   end
@@ -381,8 +381,8 @@ export class KeyboardPane extends View
   -- Under the groups: how to change a shortcut, and the way back to the
   -- defaults.
   static fn footer(restore: Action) -> View
-    local how = "Click a shortcut, then type the new keys."
-    local help = how .. " Escape stops; Backspace puts it back."
+    local how = "Click a shortcut, then press the new key combination."
+    local help = how .. " Press Escape to cancel or Backspace to restore the default."
     local text = Text(help).font(12.0).foregroundStyle(Style.dimText)
     return HStack(alignment: StackAlignment.Center, spacing: 12.0) do
       text.expanded()

@@ -101,7 +101,7 @@ export class Document
     local size = Shell.output("stat -L -c %s -- " .. Shell.quote(whole))
     local bytes = (String.trim(size ?? "") as integer?) ?? 0
     if bytes > Document.largest then
-      self.problem = "“" .. name .. "” is too large to open here."
+      self.problem = "“" .. name .. "” is too large to open."
       return false
     end
 
@@ -147,14 +147,14 @@ export class Document
     local part = path .. ".part"
     local file = Io.open(part, IoMode.Write)
     if file == nil then
-      self.problem = "“" .. Folder.nameOf(path) .. "” could not be saved there."
+      self.problem = "“" .. Folder.nameOf(path) .. "” could not be saved in this location."
       return false
     end
     file!.write(self.text)
     file!.close()
     if not Os.rename(part, path) then
       Os.remove(part)
-      self.problem = "“" .. Folder.nameOf(path) .. "” could not be saved there."
+      self.problem = "“" .. Folder.nameOf(path) .. "” could not be saved in this location."
       return false
     end
     self.path = path

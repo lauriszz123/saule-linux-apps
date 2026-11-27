@@ -121,7 +121,7 @@ export class UpdatePane extends View
     if installing then
       Table.insert(
         items,
-        Said.note("Installing the update… Don't turn the computer off.")
+        Said.note("Installing update… Do not turn off the computer.")
       )
     elseif machine.updateState == "done" then
       local restart = RowButton("Restart…", fn()
@@ -132,7 +132,7 @@ export class UpdatePane extends View
       Table.insert(
         items,
         Group("Installed", {
-          Row("Version " .. machine.updateDetail .. " starts next time", restart),
+          Row("Version " .. machine.updateDetail .. " will be used after a restart", restart),
         })
       )
     elseif machine.updateState == "failed" then
@@ -159,13 +159,13 @@ export class UpdatePane extends View
       end
     end
     if #rows == 0 then
-      Table.insert(rows, Row("No update file was found", Said("")))
+      Table.insert(rows, Row("No update files found", Said("")))
     end
     Table.insert(items, Group("Updates", rows))
     Table.insert(
       items,
       Said.note(
-        "An update is a file ending in “.update”, on a USB drive or in Downloads. Documents and settings are kept."
+        "Updates are files ending in “.update”, on a USB drive or in Downloads. Documents and settings are preserved."
       )
     )
     return Said.pane(items)

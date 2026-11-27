@@ -1,0 +1,50 @@
+-- The bar along the top: Today and the months before and after at its
+-- left, the month shown in the middle, a new event at its right.
+
+from uikit import *
+from model import Showing
+from Look import Look
+from BarButton import BarButton
+
+export class CalendarBar extends View
+  showing: Showing
+  refresh: Action
+
+  fn init(showing: Showing, refresh: Action, key: string? = nil)
+    self.super(key)
+    self.showing = showing
+    self.refresh = refresh
+  end
+
+  fn body(context: BuildContext) -> View
+    local showing = self.showing
+    local refresh = self.refresh
+    local month = showing.month
+    local said = Date.monthName(month.month) .. " " .. month.year
+    local name = Text(said).font(15.0).foregroundStyle(Look.text)
+
+    local row = HStack(alignment: StackAlignment.Center, spacing: 6.0) do
+      BarButton("Today", fn()
+        showing.today()
+        refresh()
+      end)
+      BarButton("‹", fn()
+        showing.turn(-1)
+        refresh()
+      end, key: "before")
+      BarButton("›", fn()
+        showing.turn(1)
+        refresh()
+      end, key: "after")
+      Clip(child: name.lineLimit(1).centered()).expanded()
+      BarButton("+", fn()
+        showing.compose()
+        refresh()
+      end, key: "new")
+    end
+    local inset = EdgeInsets.symmetric(horizontal: 10.0)
+    return row.padding(insets: inset).frame(height: Look.barHeight).background(
+      Look.bar
+    )
+  end
+end

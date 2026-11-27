@@ -19,7 +19,7 @@ export class OfflinePane extends View
   fn body(context: BuildContext) -> View
     local settings = self.settings
     local retried = self.retried
-    local explain = "Settings changes the window manager it runs in."
+    local explain = "Settings requires the Saule window manager."
     local cause = Text(settings.problem).font(12.0).foregroundStyle(
       Style.dimText
     )
@@ -29,9 +29,9 @@ export class OfflinePane extends View
     end
 
     return VStack(alignment: StackAlignment.Leading, spacing: 12.0) do
-      PaneTitle("Not connected")
+      PaneTitle("Not Connected")
       Text(explain).font(13.0).foregroundStyle(Style.text)
-      Text("There isn't one here to talk to.").font(13.0).foregroundStyle(
+      Text("No window manager is available in this session.").font(13.0).foregroundStyle(
         Style.text
       )
       show(cause)

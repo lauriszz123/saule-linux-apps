@@ -1,0 +1,6 @@
+-- model — the events, and what the window shows of them, without the
+-- window.
+
+export from CalendarEvent import *
+export from Events import *
+export from Showing import *

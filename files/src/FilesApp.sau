@@ -19,7 +19,7 @@ export class FilesApp extends App
     WmApp.describe(
       "Files",
       Project.version,
-      "The computer's folders and what is in them."
+      "Browse and manage files and folders."
     )
   end
 

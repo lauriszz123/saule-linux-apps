@@ -1,0 +1,207 @@
+-- A list of processes: a heading for each column, which orders the list
+-- by it when clicked (and the other way round when clicked again), and
+-- a row for each process, of which only the ones in view are built.
+
+from uikit import *
+from model import Listing, SortBy, Tab, Task
+from Look import Look
+from TaskRow import Column, TaskRow
+
+export class TaskList extends View
+  listing: Listing
+  tasks: table<Task>
+  columns: table<Column>
+  -- Whether a heading orders the list: not the services', which are in
+  -- the order they were started.
+  sortable: boolean
+  refresh: Action
+  -- What to say in place of the rows when there are none.
+  empty: string
+
+  fn init(
+    listing: Listing,
+    tasks: table<Task>,
+    columns: table<Column>,
+    sortable: boolean,
+    refresh: Action,
+    empty: string,
+    key: string? = nil
+  )
+    self.super(key)
+    self.listing = listing
+    self.tasks = tasks
+    self.columns = columns
+    self.sortable = sortable
+    self.refresh = refresh
+    self.empty = empty
+  end
+
+  -- The columns each view shows, most wanted first: `fit` leaves out
+  -- the last of them as the window narrows.
+  static fn forApps() -> table<Column>
+    return {
+      Column("app", "App", 0.0, strong: true),
+      Column("cpu", "% CPU", 60.0, right: true),
+      Column("memory", "Memory", 84.0, right: true),
+      Column("pid", "PID", 56.0, right: true),
+    }
+  end
+
+  static fn forProcesses() -> table<Column>
+    return {
+      Column("name", "Process Name", 0.0, strong: true),
+      Column("cpu", "% CPU", 60.0, right: true),
+      Column("memory", "Memory", 84.0, right: true),
+      Column("pid", "PID", 56.0, right: true),
+      Column("threads", "Threads", 62.0, right: true),
+      Column("user", "User", 80.0),
+    }
+  end
+
+  static fn forServices() -> table<Column>
+    return {
+      Column("service", "Service", 170.0, strong: true),
+      Column("purpose", "Description", 0.0),
+      Column("status", "Status", 70.0),
+      Column("memory", "Memory", 84.0, right: true),
+      Column("pid", "PID", 56.0, right: true),
+    }
+  end
+
+  -- As many of `columns`, from the first, as fit in `width` with room
+  -- left for a name: the first two at the least.
+  static fn fit(columns: table<Column>, width: float) -> table<Column>
+    if width <= 0.0 then
+      return columns
+    end
+    local out: table<Column> = {}
+    local used = 20.0
+    for i = 1, #columns do
+      local column = columns[i]
+      -- What takes the room left is given 140 points of it to count on.
+      local wants = column.width + 8.0
+      if column.width <= 0.0 then
+        wants = 140.0
+      end
+      if i <= 2 or used + wants <= width then
+        Table.insert(out, column)
+        used = used + wants
+      end
+    end
+    return out
+  end
+
+  -- Which order a column's heading asks for, if any.
+  static fn orderOf(name: string) -> SortBy?
+    return match name
+      case "app" then SortBy.Name
+      case "name" then SortBy.Name
+      case "cpu" then SortBy.Cpu
+      case "memory" then SortBy.Memory
+      case "threads" then SortBy.Threads
+      case "pid" then SortBy.Pid
+      case "user" then SortBy.User
+      case _ then nil
+    end
+  end
+
+  fn body(context: BuildContext) -> View
+    local listing = self.listing
+    local refresh = self.refresh
+    local tasks = self.tasks
+    local columns = TaskList.fit(self.columns, listing.width)
+
+    local fill = StackAlignment.Fill
+    if #tasks == 0 then
+      local none = Text(self.empty).font(12.0).foregroundStyle(Look.dimText)
+      return VStack(alignment: fill) do
+        self.headings(columns)
+        none.padding(20.0).centered().expanded()
+      end
+    end
+
+    local row = fn(i: integer) -> View
+      local task = tasks[i]
+      return TaskRow(task, columns, listing.chosen == task.pid, i % 2 == 0, fn()
+        listing.chosen = task.pid
+        refresh()
+      end)
+    end
+    -- Everything a row shows, said as one text: a row that says what
+    -- it said at the last sample is left as it is.
+    local shape = tostring(#columns)
+    local said = fn(i: integer) -> string
+      local task = tasks[i]
+      local state = shape .. "|" .. task.pid .. "|" .. task.name
+      if listing.chosen == task.pid then
+        state = state .. "|chosen"
+      end
+      return state .. "|" .. task.cpu .. "|" .. task.memory .. "|" .. task.threads
+    end
+    local rows = LazyList(
+      #tasks,
+      Look.rowHeight,
+      row,
+      stamp: said,
+      reveal: listing.chosenAt(tasks),
+      padding: EdgeInsets.symmetric(horizontal: 6.0, vertical: 4.0),
+      key: "rows"
+    )
+    return VStack(alignment: fill) do
+      self.headings(columns)
+      rows.expanded()
+    end
+  end
+
+  -- The columns' names, lined up with the rows under them.
+  local fn headings(columns: table<Column>) -> View
+    local cells: table<View> = {}
+    for column in columns do
+      Table.insert(cells, self.heading(column))
+    end
+    local row = HStack(
+      alignment: StackAlignment.Center,
+      spacing: 8.0,
+      children: cells
+    )
+    local inset = EdgeInsets.symmetric(horizontal: 16.0)
+    local line = Spacer().frame(height: 1.0).background(Look.hairline)
+    return VStack(alignment: StackAlignment.Fill) do
+      row.padding(insets: inset).frame(height: 22.0)
+      show(line)
+    end
+  end
+
+  local fn heading(column: Column) -> View
+    local listing = self.listing
+    local refresh = self.refresh
+    local by = TaskList.orderOf(column.name)
+    local said = column.title
+    local ink = Look.dimText
+    if self.sortable and by != nil and listing.by == by! then
+      ink = Look.text
+      if listing.ascending then
+        said = said .. "  ▴"
+      else
+        said = said .. "  ▾"
+      end
+    end
+    local label = Text(said).font(11.0).foregroundStyle(ink).lineLimit(1)
+    -- Each view is made once and used once: one made here and left
+    -- over would be taken for a row of the list this is built in.
+    local held: View = label
+    if self.sortable and by != nil then
+      held = GestureArea(child: label, onTap: fn()
+        listing.sort(by!)
+        refresh()
+      end)
+    end
+    if column.width <= 0.0 then
+      return held.expanded()
+    end
+    if column.right then
+      return held.aligned(Alignment.centerRight()).frame(width: column.width)
+    end
+    return held.frame(width: column.width)
+  end
+end

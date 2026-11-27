@@ -1,0 +1,78 @@
+-- One of the overview's three cards: what is measured, how much of it
+-- is in use now, how that has gone, and a few figures under it.
+
+from uikit import *
+from Look import Look
+from Graph import Graph
+
+export class MeterCard extends View
+  title: string
+  -- The figure in large, and what it is a figure of, beside it.
+  value: string
+  caption: string
+  history: table<float>
+  room: integer
+  colour: Color
+  -- Under the graph: a name and its value, a row each.
+  facts: table<table<string>>
+  -- In place of the graph and the facts, when there is nothing to
+  -- measure: why.
+  note: string
+
+  fn init(
+    title: string,
+    value: string,
+    caption: string,
+    history: table<float>,
+    room: integer,
+    colour: Color,
+    facts: table<table<string>>,
+    note: string = "",
+    key: string? = nil
+  )
+    self.super(key ?? title)
+    self.title = title
+    self.value = value
+    self.caption = caption
+    self.history = history
+    self.room = room
+    self.colour = colour
+    self.facts = facts
+    self.note = note
+  end
+
+  fn body(context: BuildContext) -> View
+    local title = Text(self.title).font(12.0).foregroundStyle(Look.dimText)
+    local value = Text(self.value).font(24.0).foregroundStyle(Look.text)
+    local caption = Text(self.caption).font(12.0).foregroundStyle(Look.dimText)
+    local figure = HStack(alignment: StackAlignment.Trailing, spacing: 6.0) do
+      value.lineLimit(1)
+      caption.lineLimit(1).padding(insets: EdgeInsets.only(bottom: 4.0))
+      Spacer()
+    end
+
+    local parts: table<View> = {title.lineLimit(1), figure}
+    if self.note != "" then
+      local note = Text(self.note).font(12.0).foregroundStyle(Look.dimText)
+      Table.insert(parts, note.lineLimit(4))
+    else
+      Table.insert(parts, Graph(self.history, self.room, self.colour))
+      for fact in self.facts do
+        local name = Text(fact[1]).font(12.0).foregroundStyle(Look.dimText)
+        local said = Text(fact[2]).font(12.0).foregroundStyle(Look.text)
+        Table.insert(parts, HStack(alignment: StackAlignment.Center) do
+          name.lineLimit(1)
+          Spacer()
+          said.lineLimit(1)
+        end)
+      end
+    end
+    local column = VStack(
+      alignment: StackAlignment.Fill,
+      sizing: StackSize.Fit,
+      spacing: 8.0,
+      children: parts
+    )
+    return column.padding(14.0).background(Look.card, 10.0, border: Look.edge)
+  end
+end

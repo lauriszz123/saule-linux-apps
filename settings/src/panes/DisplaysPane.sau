@@ -49,35 +49,35 @@ export class DisplaysPane extends View
     -- window on a desktop as on Saule Linux's own screen.
     local chips: table<View> = {}
     for card in info.cards do
-      local said = "No driver: not used"
+      local said = "No driver available"
       if card.driver != "" and card.primary then
-        said = "Drives the screen"
+        said = "In use"
       elseif card.driver != "" then
-        said = "Has a driver"
+        said = "Available"
       elseif card.primary then
-        said = "Drives the screen, with no driver of its own"
+        said = "In use, without a dedicated driver"
       end
       Table.insert(chips, Row(card.name, Said(said)))
     end
-    local drawn = "The processor"
+    local drawn = "Software (processor)"
     if info.renderer != "" then
       drawn = info.renderer
     end
-    Table.insert(chips, Row("Drawn by", Said(drawn)))
+    Table.insert(chips, Row("Renderer", Said(drawn)))
     Table.insert(items, Group("Graphics", chips))
     if info.renderer == "" then
       Table.insert(
         items,
         Said.note(
-          "The processor is drawing the screen, which is slower.",
+          "Graphics acceleration is unavailable. Rendering may be slower.",
           warning: true
         )
       )
       local why = info.rendererProblem
       if why == "" then
-        why = "no graphics chip here has a driver that works."
+        why = "No compatible graphics driver was found."
       end
-      Table.insert(items, Said.note("Why: " .. why))
+      Table.insert(items, Said.note("Reason: " .. why))
     end
 
     -- How large everything is drawn: on Saule Linux's own screen. Nested
@@ -95,11 +95,11 @@ export class DisplaysPane extends View
           changed()
         end
       )
-      Table.insert(items, Group("Size", {Row("Size of everything", size)}))
+      Table.insert(items, Group("Scaling", {Row("Display scale", size)}))
       Table.insert(
         items,
         Said.note(
-          "Automatic goes by how many pixels the screen has: larger on a laptop's 1080 lines than on a netbook's 600, and twice the size on a 4K screen."
+          "Auto selects a scale based on the display's resolution."
         )
       )
     end
@@ -121,7 +121,7 @@ export class DisplaysPane extends View
       Table.insert(
         items,
         Said.note(
-          "The keys with a sun on them change the same brightness, where the keyboard has them."
+          "Brightness can also be adjusted with the keyboard's brightness keys."
         )
       )
     end
@@ -140,7 +140,7 @@ export class DisplaysPane extends View
           changed()
         end
       )
-      local rows: table<View> = {Row("Dim the screen after", dim)}
+      local rows: table<View> = {Row("Dim display after", dim)}
       -- How dim: how much of its brightness the screen keeps. And
       -- whether what is on it is blurred as it dims.
       local how = Segmented(
@@ -152,13 +152,13 @@ export class DisplaysPane extends View
           changed()
         end
       )
-      Table.insert(rows, Row("Dim to", how))
+      Table.insert(rows, Row("Dimmed brightness", how))
       local blur = Toggle(value: options.dimBlur, onChanged: fn(on: boolean)
         options.dimBlur = on
         changed()
       end)
-      Table.insert(rows, Row("Blur the screen as it dims", blur))
-      local said = "Counted from the last key pressed or the last time the pointer moved."
+      Table.insert(rows, Row("Blur display when dimmed", blur))
+      local said = "Time is measured from the last keyboard or pointer activity."
       if machine.hasPassword then
         local lock = Segmented(
           {"0", "120", "300", "600", "1800"},
@@ -169,11 +169,11 @@ export class DisplaysPane extends View
             changed()
           end
         )
-        Table.insert(rows, Row("Lock the screen after", lock))
+        Table.insert(rows, Row("Lock screen after", lock))
       else
-        said ..= " With a login password, the screen can lock too."
+        said ..= " Set a login password to lock the screen automatically."
       end
-      Table.insert(items, Group("When Left Alone", rows))
+      Table.insert(items, Group("When Inactive", rows))
       Table.insert(items, Said.note(said))
     end
     return Said.pane(items)

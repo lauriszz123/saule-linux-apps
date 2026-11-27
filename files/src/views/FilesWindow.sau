@@ -202,7 +202,7 @@ export class FilesWindow extends View
     if browser.asking == "empty" then
       return AskSheet(
         "Are you sure you want to empty the Trash?",
-        "Everything in it will be removed for good.",
+        "All items in the Trash will be permanently deleted.",
         "Empty Trash",
         yes,
         no
@@ -215,7 +215,7 @@ export class FilesWindow extends View
     end
     return AskSheet(
       "Are you sure you want to delete “" .. name .. "”?",
-      "It will be removed for good, at once.",
+      "This item will be deleted immediately. This cannot be undone.",
       "Delete",
       yes,
       no

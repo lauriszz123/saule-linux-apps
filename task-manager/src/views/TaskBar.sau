@@ -1,0 +1,161 @@
+-- The bar along the top: which of the four views is shown, in the
+-- middle; at its left the button that ends what is chosen; at its
+-- right whose processes are listed, and the search.
+
+from uikit import *
+from model import Listing, Monitor, Tab
+from Look import Look
+from BarButton import BarButton
+from Segments import Segments
+
+export class TaskBar extends View
+  monitor: Monitor
+  listing: Listing
+  narrow: boolean
+  refresh: Action
+
+  -- The search field's hold on the keyboard.
+  static node: FocusNode = FocusNode()
+
+  fn init(
+    monitor: Monitor,
+    listing: Listing,
+    narrow: boolean,
+    refresh: Action,
+    key: string? = nil
+  )
+    self.super(key)
+    self.monitor = monitor
+    self.listing = listing
+    self.narrow = narrow
+    self.refresh = refresh
+  end
+
+  static fn tabName(tab: Tab) -> string
+    return match tab
+      case Tab.Overview then "overview"
+      case Tab.Apps then "apps"
+      case Tab.Processes then "processes"
+      case Tab.Startup then "startup"
+    end
+  end
+
+  static fn tabOf(name: string) -> Tab
+    return match name
+      case "apps" then Tab.Apps
+      case "processes" then Tab.Processes
+      case "startup" then Tab.Startup
+      case _ then Tab.Overview
+    end
+  end
+
+  fn body(context: BuildContext) -> View
+    local monitor = self.monitor
+    local listing = self.listing
+    local refresh = self.refresh
+
+    local tabs = Segments(
+      {"Overview", "Apps", "Processes", "Startup"},
+      {"overview", "apps", "processes", "startup"},
+      TaskBar.tabName(listing.tab),
+      fn(name: string)
+        listing.show(TaskBar.tabOf(name))
+        refresh()
+      end
+    )
+
+    -- Quit: for a process chosen that is the person's own to end.
+    local chosen = monitor.task(listing.chosen)
+    local lists = listing.tab == Tab.Apps or listing.tab == Tab.Processes
+    local can = lists and chosen != nil and monitor.mayEnd(chosen!)
+    local quit = BarButton("Quit", fn()
+      listing.asking = listing.chosen
+      refresh()
+    end, enabled: can)
+
+    local scope = Segments(
+      {"All", "Mine", "System"},
+      {"all", "mine", "system"},
+      listing.scope,
+      fn(name: string)
+        listing.scope = name
+        refresh()
+      end,
+      key: "scope"
+    )
+    local search = TextField(
+      value: listing.query,
+      placeholder: "Search",
+      style: TextStyle(Look.text, 12.0),
+      placeholderStyle: TextStyle(Look.dimText, 12.0),
+      background: Look.well,
+      border: Look.edge,
+      focusBorder: Look.accent,
+      padding: EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+      radius: 6.0,
+      width: 130.0,
+      node: TaskBar.node,
+      onChanged: fn(text: string)
+        listing.query = text
+        refresh()
+      end,
+      key: "search:" .. TaskBar.tabName(listing.tab)
+    )
+
+    local narrow = self.narrow
+    local processes = listing.tab == Tab.Processes
+    -- In a narrow window the views' names take a line of their own, and
+    -- the rest are under them.
+    if narrow then
+      -- The search stays while there is room beside the rest for it.
+      local roomy = listing.width >= 470.0
+      local second = HStack(alignment: StackAlignment.Center, spacing: 8.0) do
+        if lists then
+          show(quit)
+        end
+        if processes then
+          show(scope)
+        end
+        Spacer()
+        if lists and roomy then
+          search.frame(width: 120.0, height: 26.0)
+        end
+      end
+      local inset = EdgeInsets.symmetric(horizontal: 10.0)
+      local column = VStack(alignment: StackAlignment.Fill) do
+        tabs.centered().frame(height: Look.barHeight)
+        if lists then
+          second.padding(insets: inset).frame(height: 34.0)
+        end
+      end
+      return column.background(Look.bar)
+    end
+
+    -- The views' names in the middle whatever is at the sides: the two
+    -- sides are given the same width.
+    local left = HStack(alignment: StackAlignment.Center, spacing: 8.0) do
+      if lists then
+        show(quit)
+      end
+      Spacer()
+    end
+    local right = HStack(alignment: StackAlignment.Center, spacing: 8.0) do
+      Spacer()
+      if processes then
+        show(scope)
+      end
+      if lists then
+        search.frame(width: 130.0, height: 26.0)
+      end
+    end
+    local row = HStack(alignment: StackAlignment.Center, spacing: 8.0) do
+      left.expanded()
+      show(tabs)
+      right.expanded()
+    end
+    local inset = EdgeInsets.symmetric(horizontal: 10.0)
+    return row.padding(insets: inset).frame(height: Look.barHeight).background(
+      Look.bar
+    )
+  end
+end

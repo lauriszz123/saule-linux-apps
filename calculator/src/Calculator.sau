@@ -1,0 +1,231 @@
+-- What a calculator knows: the number on its display, the number and
+-- the operation waiting for a second number, and whether the next
+-- digit starts a new number or carries the one shown on.
+--
+-- It works the way a pocket calculator does: operations are done in the
+-- order they are pressed, `2 + 3 × 4 =` is 20.
+
+export class Calculator
+  -- What is shown: digits as they are typed, or an answer.
+  shown: string
+  -- The number before the operation, and the operation: "+", "−", "×",
+  -- "÷", or "" with none waiting.
+  local held: float
+  operation: string
+  -- The next digit starts a new number: after an operation or an answer.
+  local fresh: boolean
+  -- The second number and operation of the last answer: `=` pressed
+  -- again does it again.
+  local lastBy: float
+  local lastOperation: string
+  -- Division by zero, or an answer too large to show.
+  failed: boolean
+
+  -- The most digits typed or shown.
+  static digits: integer = 9
+
+  fn init()
+    self.shown = "0"
+    self.held = 0.0
+    self.operation = ""
+    self.fresh = true
+    self.lastBy = 0.0
+    self.lastOperation = ""
+    self.failed = false
+  end
+
+  -- The number shown, as a number.
+  fn value() -> float
+    return (self.shown as float?) ?? 0.0
+  end
+
+  -- Whether there is anything to clear but the last entry: what AC
+  -- clears and C does not.
+  fn entering() -> boolean
+    return not self.fresh and self.shown != "0"
+  end
+
+  -- A number as the display says it: whole numbers without a point,
+  -- others with as many places as fit, and no noughts after them.
+  static fn said(value: float) -> string
+    -- Not a number at all: what dividing by nothing comes to.
+    if value != value or value - value != 0.0 then
+      return "Error"
+    end
+    local magnitude = value
+    if magnitude < 0.0 then
+      magnitude = -magnitude
+    end
+    -- Too large or too small for the display's digits: as a number
+    -- times a power of ten.
+    if magnitude >= 1e9 or (magnitude > 0.0 and magnitude < 1e-7) then
+      return String.format("%.4e", value)
+    end
+    local whole = Math.floor(value)
+    if (whole as float) == value then
+      return tostring(whole)
+    end
+    -- Places after the point: what is left of the digits once the whole
+    -- part has taken its own.
+    local before = String.len(tostring(Math.floor(magnitude)))
+    local places = Math.clamp(Calculator.digits - before, 0, 8)
+    local text = String.format("%." .. places .. "f", value)
+    if String.contains(text, ".") then
+      while String.ends(text, "0") do
+        text = String.sub(text, 1, String.len(text) - 1)
+      end
+      if String.ends(text, ".") then
+        text = String.sub(text, 1, String.len(text) - 1)
+      end
+    end
+    if text == "-0" then
+      return "0"
+    end
+    return text
+  end
+
+  local fn show(value: float) -> nil
+    self.shown = Calculator.said(value)
+    self.failed = self.shown == "Error"
+    self.fresh = true
+  end
+
+  -- A digit, "0" to "9".
+  fn digit(d: string) -> nil
+    if self.failed then
+      self.clear()
+    end
+    if self.fresh then
+      self.shown = d
+      self.fresh = false
+      return
+    end
+    local count = String.len(
+      String.replace(String.replace(self.shown, "-", ""), ".", "")
+    )
+    if count >= Calculator.digits then
+      return
+    end
+    if self.shown == "0" then
+      self.shown = d
+    else
+      self.shown = self.shown .. d
+    end
+  end
+
+  -- The decimal point.
+  fn point() -> nil
+    if self.failed then
+      self.clear()
+    end
+    if self.fresh then
+      self.shown = "0."
+      self.fresh = false
+    elseif not String.contains(self.shown, ".") then
+      self.shown = self.shown .. "."
+    end
+  end
+
+  -- Take the last digit typed back.
+  fn back() -> nil
+    if self.fresh or self.failed then
+      return
+    end
+    local shorter = String.sub(self.shown, 1, String.len(self.shown) - 1)
+    if shorter == "" or shorter == "-" then
+      shorter = "0"
+    end
+    self.shown = shorter
+  end
+
+  -- The number shown, with the other sign.
+  fn negate() -> nil
+    if self.failed or self.shown == "0" then
+      return
+    end
+    if String.starts(self.shown, "-") then
+      self.shown = String.sub(self.shown, 2)
+    else
+      self.shown = "-" .. self.shown
+    end
+  end
+
+  -- A hundredth of the number shown; after `+` or `-`, that many
+  -- hundredths of the number before it: `200 + 10 %` adds 20.
+  fn percent() -> nil
+    if self.failed then
+      return
+    end
+    local value = self.value() / 100.0
+    if self.operation == "+" or self.operation == "−" then
+      value = self.held * value
+    end
+    self.shown = Calculator.said(value)
+    self.fresh = false
+  end
+
+  -- `a` and `b` by `operation`. Dividing by nothing is not a number.
+  static fn worked(a: float, b: float, operation: string) -> float
+    return match operation
+      case "+" then a + b
+      case "−" then a - b
+      case "×" then a * b
+      case "÷" then a / b
+      case _ then b
+    end
+  end
+
+  -- An operation: what was waiting is done first, and this one waits.
+  fn operate(operation: string) -> nil
+    if self.failed then
+      return
+    end
+    if self.operation != "" and not self.fresh then
+      self.show(Calculator.worked(self.held, self.value(), self.operation))
+      if self.failed then
+        self.operation = ""
+        return
+      end
+    end
+    self.held = self.value()
+    self.operation = operation
+    self.fresh = true
+    self.lastOperation = ""
+  end
+
+  -- The answer. Pressed again, the last operation again.
+  fn equals() -> nil
+    if self.failed then
+      return
+    end
+    if self.operation != "" then
+      local by = self.value()
+      self.lastBy = by
+      self.lastOperation = self.operation
+      local answer = Calculator.worked(self.held, by, self.operation)
+      self.operation = ""
+      self.show(answer)
+    elseif self.lastOperation != "" then
+      self.show(
+        Calculator.worked(self.value(), self.lastBy, self.lastOperation)
+      )
+    else
+      self.fresh = true
+    end
+  end
+
+  -- Clear the entry while one is being typed; else everything.
+  fn clear() -> nil
+    if self.entering() and not self.failed then
+      self.shown = "0"
+      self.fresh = true
+      return
+    end
+    self.shown = "0"
+    self.held = 0.0
+    self.operation = ""
+    self.fresh = true
+    self.lastOperation = ""
+    self.failed = false
+  end
+end

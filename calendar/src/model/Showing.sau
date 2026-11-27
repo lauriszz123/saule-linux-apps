@@ -1,0 +1,137 @@
+-- What the window shows: a month, the day chosen in it, and the event
+-- being written, if one is.
+
+from uikit import Date
+from CalendarEvent import CalendarEvent
+
+-- An event being written: a new one, or one being changed.
+export class Draft
+  -- The event being changed, or nil for a new one.
+  event: CalendarEvent?
+  date: Date
+  title: string
+  allDay: boolean
+  -- The time of day, kept while "All-day" is on so that turning it off
+  -- brings it back.
+  minutes: integer
+
+  fn init(date: Date, minutes: integer, event: CalendarEvent? = nil)
+    self.event = event
+    self.date = date
+    self.title = ""
+    self.allDay = false
+    self.minutes = minutes
+    if event != nil then
+      self.title = event!.title
+      self.allDay = event!.allDay()
+      if not event!.allDay() then
+        self.minutes = event!.minutes
+      end
+    end
+  end
+
+  -- Whether there is enough of it to keep.
+  fn ready() -> boolean
+    return String.trim(self.title) != ""
+  end
+
+  -- The time later or earlier by `by` minutes, round the clock.
+  fn shift(by: integer) -> nil
+    self.minutes = (self.minutes + by + 1440) % 1440
+  end
+
+  -- The time as an event keeps it.
+  fn kept() -> integer
+    if self.allDay then
+      return -1
+    end
+    return self.minutes
+  end
+end
+
+export class Showing
+  -- The first day of the month shown.
+  month: Date
+  -- The day chosen.
+  day: Date
+  -- The event chosen in the day's list, if one is.
+  event: CalendarEvent?
+  draft: Draft?
+  -- How large the month was last drawn, for finding the day under a
+  -- click.
+  width: float
+  height: float
+
+  -- How tall the row of the days' names over the month is.
+  static head: float = 26.0
+
+  fn init()
+    local today = Date.today()
+    self.month = today.startOfMonth()
+    self.day = today
+    self.event = nil
+    self.draft = nil
+    self.width = 0.0
+    self.height = 0.0
+  end
+
+  -- The first day drawn: the Monday on or before the first of the
+  -- month.
+  fn first() -> Date
+    -- `weekday` counts from Sunday; a week here starts on Monday.
+    local into = (self.month.weekday() + 6) % 7
+    return self.month.addDays(-into)
+  end
+
+  -- How many weeks the month takes: four to six.
+  fn weeks() -> integer
+    local into = (self.month.weekday() + 6) % 7
+    return (into + self.month.daysInMonth() + 6) / 7
+  end
+
+  -- Choose `date`, and show its month.
+  fn choose(date: Date) -> nil
+    self.day = date
+    self.month = date.startOfMonth()
+    self.event = nil
+  end
+
+  -- The month after (1) or before (-1); the day chosen goes with it,
+  -- to the same day of that month or its last.
+  fn turn(by: integer) -> nil
+    self.choose(self.day.addMonths(by))
+  end
+
+  fn today() -> nil
+    self.choose(Date.today())
+  end
+
+  -- The day under a point of the month as last drawn, or nil over the
+  -- days' names.
+  fn dayAt(x: float, y: float) -> Date?
+    if self.width <= 0.0 or self.height <= Showing.head or y < Showing.head then
+      return nil
+    end
+    local weeks = self.weeks()
+    local column = Math.clamp(Math.floor(x / (self.width / 7.0)), 0, 6)
+    local tall = (self.height - Showing.head) / (weeks as float)
+    local row = Math.clamp(Math.floor((y - Showing.head) / tall), 0, weeks - 1)
+    return self.first().addDays(row * 7 + column)
+  end
+
+  -- Start writing a new event on the day chosen: at the next hour today,
+  -- at nine on another day.
+  fn compose() -> nil
+    local minutes = 9 * 60
+    if self.day.equals(Date.today()) then
+      local hour = (Os.date("%H") as integer?) ?? 8
+      minutes = Math.min(hour + 1, 23) * 60
+    end
+    self.draft = Draft(self.day, minutes)
+  end
+
+  -- Start changing `event`.
+  fn edit(event: CalendarEvent) -> nil
+    self.draft = Draft(event.date, 9 * 60, event)
+  end
+end

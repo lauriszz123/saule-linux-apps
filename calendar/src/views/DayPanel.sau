@@ -1,0 +1,136 @@
+-- The day chosen: its name and date, its events in the order of the
+-- day, and a way to add one.
+
+from uikit import *
+from model import CalendarEvent, Events, Showing
+from Look import Look
+from BarButton import BarButton
+
+-- One event of the day: its time and its title, lit when chosen.
+export class EventRow extends View
+  event: CalendarEvent
+  chosen: boolean
+  onChosen: Action
+  onOpened: Action
+
+  fn init(
+    event: CalendarEvent,
+    chosen: boolean,
+    onChosen: Action,
+    onOpened: Action,
+    key: string? = nil
+  )
+    self.super(key)
+    self.event = event
+    self.chosen = chosen
+    self.onChosen = onChosen
+    self.onOpened = onOpened
+  end
+
+  fn body(context: BuildContext) -> View
+    local onOpened = self.onOpened
+    local fill: Color? = nil
+    if self.chosen then
+      fill = Look.buttonOn
+    end
+    local mark = Spacer().frame(width: 3.0, height: 26.0).background(
+      Look.accent,
+      1.5
+    )
+    local title = Text(self.event.title).font(13.0).foregroundStyle(Look.text)
+    local time = Text(self.event.time()).font(11.0).foregroundStyle(
+      Look.dimText
+    )
+    local words = VStack(
+      alignment: StackAlignment.Leading,
+      sizing: StackSize.Fit,
+      spacing: 1.0
+    ) do
+      title.lineLimit(1)
+      show(time)
+    end
+    local row = HStack(alignment: StackAlignment.Center, spacing: 8.0) do
+      show(mark)
+      Clip(child: words).expanded()
+    end
+    local inset = EdgeInsets.symmetric(horizontal: 8.0, vertical: 5.0)
+    return GestureArea(
+      child: row.padding(insets: inset).background(fill, 6.0),
+      onTap: self.onChosen,
+      onDoubleTapAt: fn(x: float, y: float)
+        onOpened()
+      end
+    )
+  end
+end
+
+export class DayPanel extends View
+  events: Events
+  showing: Showing
+  refresh: Action
+
+  fn init(events: Events, showing: Showing, refresh: Action, key: string? = nil)
+    self.super(key)
+    self.events = events
+    self.showing = showing
+    self.refresh = refresh
+  end
+
+  fn body(context: BuildContext) -> View
+    local events = self.events
+    local showing = self.showing
+    local refresh = self.refresh
+    local day = showing.day
+
+    local name = Text(Look.weekday(day)).font(16.0).foregroundStyle(Look.text)
+    local date = Text(day.describe()).font(12.0).foregroundStyle(Look.dimText)
+    local add = BarButton("New Event", fn()
+      showing.compose()
+      refresh()
+    end)
+    local head = HStack(alignment: StackAlignment.Center, spacing: 8.0) do
+      VStack(
+        alignment: StackAlignment.Leading,
+        sizing: StackSize.Fit,
+        spacing: 1.0
+      ) do
+        show(name)
+        show(date)
+      end.expanded()
+      show(add)
+    end
+
+    local those = events.on(day)
+    local rows: table<View> = {}
+    for i = 1, #those do
+      local event = those[i]
+      Table.insert(rows, EventRow(event, showing.event == event, fn()
+        showing.event = event
+        refresh()
+      end, fn()
+        showing.edit(event)
+        refresh()
+      end, key: day.toString() .. ":" .. i))
+    end
+    local list: View = Text("No Events").font(13.0).foregroundStyle(
+      Look.faintText
+    ).centered()
+    if #rows > 0 then
+      list = ScrollView(
+        child: VStack(
+          alignment: StackAlignment.Fill,
+          sizing: StackSize.Fit,
+          spacing: 2.0,
+          children: rows
+        ),
+        key: "events:" .. day.toString()
+      )
+    end
+
+    local column = VStack(alignment: StackAlignment.Fill, spacing: 10.0) do
+      show(head)
+      list.expanded()
+    end
+    return column.padding(12.0).background(Look.side)
+  end
+end

@@ -1,0 +1,189 @@
+-- The sheet an event is written in: its title, whether it lasts all
+-- day, and its time. A new one is added; one being changed is saved or
+-- deleted.
+
+from uikit import *
+from model import CalendarEvent, Draft
+from Look import Look
+
+export class EventSheet extends View
+  draft: Draft
+  onDone: Action
+  onDelete: Action
+  onCancel: Action
+  refresh: Action
+
+  fn init(
+    draft: Draft,
+    onDone: Action,
+    onDelete: Action,
+    onCancel: Action,
+    refresh: Action,
+    key: string? = nil
+  )
+    self.super(key)
+    self.draft = draft
+    self.onDone = onDone
+    self.onDelete = onDelete
+    self.onCancel = onCancel
+    self.refresh = refresh
+  end
+
+  -- A small button that steps the time.
+  static fn step(label: string, onPressed: Action) -> View
+    local text = Text(label).font(13.0).foregroundStyle(Look.text)
+    local face = text.centered().frame(width: 26.0, height: 24.0).background(
+      Look.button,
+      6.0
+    )
+    return GestureArea(child: face, onTap: onPressed, key: label)
+  end
+
+  fn body(context: BuildContext) -> View
+    local draft = self.draft
+    local onDone = self.onDone
+    local onCancel = self.onCancel
+    local refresh = self.refresh
+    local changing = draft.event != nil
+
+    local heading = "New Event"
+    if changing then
+      heading = "Edit Event"
+    end
+    local title = Text(heading).font(14.0).foregroundStyle(Look.text)
+    local day = Text(Look.weekday(draft.date) .. ", " .. draft.date.describe())
+
+    local field = TextField(
+      value: draft.title,
+      placeholder: "Title",
+      style: TextStyle(Look.text, 13.0),
+      placeholderStyle: TextStyle(Look.dimText, 13.0),
+      background: Look.well,
+      border: Look.edge,
+      focusBorder: Look.accent,
+      padding: EdgeInsets.symmetric(horizontal: 8.0, vertical: 6.0),
+      radius: 6.0,
+      autofocus: true,
+      onChanged: fn(text: string)
+        local was = draft.ready()
+        draft.title = text
+        -- The button that keeps it comes and goes with the title.
+        if was != draft.ready() then
+          refresh()
+        end
+      end,
+      onSubmitted: fn(text: string)
+        draft.title = text
+        if draft.ready() then
+          onDone()
+        end
+      end
+    )
+
+    local allDay = Toggle(
+      value: draft.allDay,
+      label: "All-day",
+      onChanged: fn(on: boolean)
+        draft.allDay = on
+        refresh()
+      end
+    )
+    local shift = fn(by: integer) -> Action
+      return fn()
+        draft.shift(by)
+        refresh()
+      end
+    end
+    local clock = Text(CalendarEvent.clock(draft.minutes)).font(15.0)
+    local time = HStack(
+      alignment: StackAlignment.Center,
+      sizing: StackSize.Fit,
+      spacing: 6.0
+    ) do
+      Text("Time").font(13.0).foregroundStyle(Look.dimText)
+      Spacer().frame(width: 6.0)
+      show(EventSheet.step("−", shift(-60)))
+      show(EventSheet.step("‹", shift(-5)))
+      clock.foregroundStyle(Look.text).centered().frame(width: 58.0)
+      show(EventSheet.step("›", shift(5)))
+      show(EventSheet.step("+", shift(60)))
+    end
+
+    local inset = EdgeInsets.symmetric(horizontal: 14.0, vertical: 6.0)
+    local cancel = Button(
+      label: "Cancel",
+      onPressed: onCancel,
+      color: Look.button,
+      textColor: Look.text,
+      padding: inset
+    )
+    local keep = "Add"
+    if changing then
+      keep = "Save"
+    end
+    local done = Button(
+      label: keep,
+      onPressed: onDone,
+      color: Look.accent,
+      textColor: Look.text,
+      padding: inset,
+      enabled: draft.ready()
+    )
+    local delete = Button(
+      label: "Delete",
+      onPressed: self.onDelete,
+      color: Look.button,
+      textColor: Look.warning,
+      padding: inset
+    )
+    local buttons = HStack(alignment: StackAlignment.Center, spacing: 8.0) do
+      if changing then
+        delete.frame(width: 84.0)
+      end
+      Spacer()
+      cancel.frame(width: 84.0)
+      done.frame(width: 84.0)
+    end
+
+    local column = VStack(
+      alignment: StackAlignment.Fill,
+      sizing: StackSize.Fit,
+      spacing: 10.0
+    ) do
+      show(title)
+      day.font(12.0).foregroundStyle(Look.dimText)
+      show(field)
+      allDay.aligned(Alignment.centerLeft())
+      if not draft.allDay then
+        time.aligned(Alignment.centerLeft())
+      end
+      Spacer().frame(height: 4.0)
+      show(buttons)
+    end
+    local card = column.padding(18.0).background(
+      Look.card,
+      12.0,
+      border: Look.edge
+    )
+    local nothing = fn()
+    end
+    local held = GestureArea(child: card.frame(width: 360.0), onTap: nothing)
+    local over = held.centered().background(Look.screen)
+    local keys = fn(e: KeyEvent) -> boolean
+      if e.key == "escape" then
+        onCancel()
+      end
+      -- The window's own keys are not for now.
+      return true
+    end
+    local behind = GestureArea(
+      child: over,
+      onTap: nothing,
+      onSecondaryTap: nothing,
+      onScroll: fn(dx: float, dy: float) -> boolean
+        return true
+      end
+    )
+    return Focus(child: behind, modal: true, onKeyDown: keys)
+  end
+end

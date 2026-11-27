@@ -1,0 +1,33 @@
+-- Preview as a uikit app: one window on one document at a time.
+
+from uikit import *
+from "wmapi" import WmApp
+from model import Document
+from views import Look, PreviewWindow
+
+export class PreviewApp extends App
+  document: Document
+
+  fn init()
+    self.super()
+    self.document = Document()
+    -- Opened by the window, once there is one.
+    self.document.pending = Os.args()[1] ?? ""
+    WmApp.describe(
+      "Preview",
+      Project.version,
+      "View pictures, PDF documents and Markdown files."
+    )
+  end
+
+  fn body() -> Scene
+    return WindowGroup(
+      title: "Preview",
+      width: 820,
+      height: 560,
+      background: Look.window
+    ) do
+      PreviewWindow(self.document)
+    end
+  end
+end

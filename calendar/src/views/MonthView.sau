@@ -1,0 +1,251 @@
+-- The month: a row of the days' names, and under it a row a week, each
+-- day with its number and as many of its events as there is room for.
+--
+-- It is one view that draws all of it. Forty-two days as views of
+-- their own would each be built and laid out to show a number.
+
+from shine import Graphics
+from uikit import *
+from model import CalendarEvent, Events, Showing
+from Look import Look
+
+export class MonthView extends View
+  events: Events
+  showing: Showing
+  -- A day was chosen; a day was asked to have an event written on it.
+  onChosen: Action
+  onCompose: Action
+
+  fn init(
+    events: Events,
+    showing: Showing,
+    onChosen: Action,
+    onCompose: Action,
+    key: string? = nil
+  )
+    self.super(key)
+    self.events = events
+    self.showing = showing
+    self.onChosen = onChosen
+    self.onCompose = onCompose
+  end
+
+  fn body(context: BuildContext) -> View
+    local events = self.events
+    local showing = self.showing
+    local onChosen = self.onChosen
+    local onCompose = self.onCompose
+    local paint = fn(x: float, y: float, width: float, height: float)
+      showing.width = width
+      showing.height = height
+      MonthView.draw(events, showing, x, y, width, height)
+    end
+    return GestureArea(
+      child: Canvas(painter: paint, clip: true),
+      onTapAt: fn(x: float, y: float)
+        local day = showing.dayAt(x, y)
+        if day != nil then
+          showing.choose(day!)
+          onChosen()
+        end
+      end,
+      onDoubleTapAt: fn(x: float, y: float)
+        if showing.dayAt(x, y) != nil then
+          onCompose()
+        end
+      end,
+      onScroll: fn(dx: float, dy: float) -> boolean
+        -- The wheel turns the months.
+        if dy > 0.0 then
+          showing.turn(-1)
+        elseif dy < 0.0 then
+          showing.turn(1)
+        else
+          return false
+        end
+        onChosen()
+        return true
+      end
+    )
+  end
+
+  -- `v` on a whole pixel: text and hairlines drawn between two are
+  -- soft.
+  static fn snap(v: float) -> float
+    return Math.floor(v) as float
+  end
+
+  static fn draw(
+    events: Events,
+    showing: Showing,
+    x: float,
+    y: float,
+    width: float,
+    height: float
+  ) -> nil
+    local head = Showing.head
+    local weeks = showing.weeks()
+    local wide = width / 7.0
+    local tall = (height - head) / (weeks as float)
+    local first = showing.first()
+    local today = Date.today()
+    local names = TextStyle(Look.dimText, 11.0)
+    local number = TextStyle(Look.text, 13.0)
+    local other = TextStyle(Look.faintText, 13.0)
+    local onToday = TextStyle(Color(1.0, 1.0, 1.0), 13.0)
+    local line = TextStyle(Look.text, 11.0)
+    local dim = TextStyle(Look.dimText, 11.0)
+    local lineHeight = Math.floor(line.lineHeight() + 4.0) as float
+
+    -- The days' names, Monday first; shorter where the columns are
+    -- narrow.
+    for column = 0, 6 do
+      local name = Look.weekdays[(column + 1) % 7 + 1]
+      if wide < 90.0 then
+        name = String.sub(name, 1, 3)
+      end
+      local across = names.measure(name).width
+      names.draw(
+        name,
+        MonthView.snap(x + (column as float) * wide + wide - across - 8.0),
+        MonthView.snap(y + (head - names.lineHeight()) / 2.0)
+      )
+    end
+
+    for row = 0, weeks - 1 do
+      local top = MonthView.snap(y + head + (row as float) * tall)
+      for column = 0, 6 do
+        local left = MonthView.snap(x + (column as float) * wide)
+        local date = first.addDays(row * 7 + column)
+        local inMonth = date.month == showing.month.month
+
+        if column >= 5 then
+          Look.weekend.apply()
+          Graphics.rectangle("fill", left, top, wide, tall)
+        end
+        if date.equals(showing.day) then
+          Look.chosen.apply()
+          Graphics.rectangle("fill", left, top, wide, tall)
+        end
+
+        -- The number, at the top right; today's on a disc.
+        local said = tostring(date.day)
+        local style = number
+        if not inMonth then
+          style = other
+        end
+        local across = style.measure(said).width
+        local nx = left + wide - across - 9.0
+        local ny = top + 6.0
+        if date.equals(today) then
+          Look.accent.apply()
+          local r = Math.max(across, style.lineHeight()) / 2.0 + 3.0
+          Graphics.circle(
+            "fill",
+            nx + across / 2.0,
+            ny + style.lineHeight() / 2.0,
+            r
+          )
+          style = onToday
+        end
+        style.draw(said, MonthView.snap(nx), MonthView.snap(ny))
+
+        -- The day's events: as many lines as fit, the last saying how
+        -- many are left over when not all do.
+        local those = events.on(date)
+        if #those > 0 then
+          local room = Math.floor((tall - 30.0) / lineHeight)
+          local shown = Math.min(#those, room)
+          if #those > room and room > 0 then
+            shown = room - 1
+          end
+          local ey = top + 28.0
+          for i = 1, shown do
+            MonthView.eventLine(
+              those[i],
+              left + 4.0,
+              ey,
+              wide - 8.0,
+              lineHeight,
+              line,
+              dim,
+              inMonth
+            )
+            ey = ey + lineHeight
+          end
+          if #those > shown then
+            local more = (#those - shown) .. " more"
+            if shown == 0 then
+              more = #those .. " events"
+            end
+            if room <= 0 then
+              -- No room for a line: a dot says there is something.
+              Look.accent.apply()
+              Graphics.circle("fill", left + 10.0, top + 14.0, 3.0)
+            else
+              dim.draw(
+                dim.truncated(more, wide - 14.0),
+                left + 8.0,
+                MonthView.snap(ey + 2.0)
+              )
+            end
+          end
+        end
+      end
+    end
+
+    -- The lines between the days.
+    Look.rule.apply()
+    for row = 0, weeks - 1 do
+      local top = MonthView.snap(y + head + (row as float) * tall)
+      Graphics.rectangle("fill", x, top, width, 1.0)
+    end
+    for column = 1, 6 do
+      local left = MonthView.snap(x + (column as float) * wide)
+      Graphics.rectangle("fill", left, y + head, 1.0, height - head)
+    end
+  end
+
+  -- One event in a day of the month: one that lasts all day as a bar
+  -- with its title in it, another as a dot, its time and its title.
+  static fn eventLine(
+    event: CalendarEvent,
+    x: float,
+    y: float,
+    width: float,
+    height: float,
+    line: TextStyle,
+    dim: TextStyle,
+    inMonth: boolean
+  ) -> nil
+    local ty = MonthView.snap(y + (height - line.lineHeight()) / 2.0)
+    local style = line
+    if not inMonth then
+      style = dim
+    end
+    if event.allDay() then
+      Look.tint.apply()
+      Graphics.rectangle("fill", x, y + 1.0, width, height - 2.0, 4.0)
+      style.draw(
+        style.truncated(event.title, width - 10.0),
+        MonthView.snap(x + 5.0),
+        ty
+      )
+      return
+    end
+    Look.accent.apply()
+    Graphics.circle("fill", x + 7.0, y + height / 2.0, 3.0)
+    local time = event.time()
+    local tx = x + 14.0
+    -- The time is left out where there is not room for it and a word.
+    if width >= 96.0 then
+      dim.draw(time, MonthView.snap(tx), ty)
+      tx = tx + dim.measure(time).width + 5.0
+    end
+    style.draw(
+      style.truncated(event.title, x + width - tx - 2.0),
+      MonthView.snap(tx),
+      ty
+    )
+  end
+end

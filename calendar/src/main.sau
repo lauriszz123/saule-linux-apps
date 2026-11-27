@@ -1,0 +1,22 @@
+--[[
+Calendar: the month at a glance, and the events of each day.
+
+  saule run .
+
+    model/   the events and where they are kept, the month shown and
+             the day chosen, an event being written
+    views/   the bar, the month, the day's events, the sheet an event
+             is written in
+
+Events are kept in `~/.local/share/saule/calendar.tsv`, one a line: the
+date, the time or `-` for one that lasts all day, and the title, with
+tabs between.
+]]
+
+from CalendarApp import CalendarApp
+
+class Main
+  static fn main()
+    CalendarApp().run()
+  end
+end

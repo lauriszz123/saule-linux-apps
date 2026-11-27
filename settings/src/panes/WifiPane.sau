@@ -104,15 +104,15 @@ export class WifiPane extends View
           end)
           refresh()
         end)
-        Table.insert(rows, Row("Joins " .. name .. " by itself", forget))
+        Table.insert(rows, Row("Auto-join " .. name, forget))
       end
     end
     if #rows == 0 then
-      Table.insert(rows, Row("Looking for networks…", Said("")))
+      Table.insert(rows, Row("Searching for networks…", Said("")))
     end
     Table.insert(items, Group("Networks", rows))
 
-    local again = Button(label: "Look Again", onPressed: fn()
+    local again = Button(label: "Refresh", onPressed: fn()
       settings.tell(fn(wm: WmSettings)
         wm.scanNetworks()
       end)

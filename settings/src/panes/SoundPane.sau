@@ -45,15 +45,15 @@ export class SoundPane extends View
 
     local outputRows: table<View> = {Row("Volume", volume), Row("Mute", mute)}
     if machine.headphones == "in" then
-      Table.insert(outputRows, Row("Playing through", Said("Headphones")))
+      Table.insert(outputRows, Row("Device", Said("Headphones")))
     elseif machine.headphones == "out" then
-      Table.insert(outputRows, Row("Playing through", Said("Speakers")))
+      Table.insert(outputRows, Row("Device", Said("Speakers")))
     end
     local items: table<View> = {
       PaneTitle("Sound"),
       Group("Output", outputRows),
       Said.note(
-        "The keys with a loudspeaker on them turn the same volume, where the keyboard has them."
+        "Volume can also be adjusted with the keyboard's volume keys."
       ),
     }
 
@@ -73,10 +73,10 @@ export class SoundPane extends View
         end
         Table.insert(cards, Row(output.name, control))
       end
-      Table.insert(items, Group("Play Sound Through", cards))
+      Table.insert(items, Group("Output Device", cards))
       Table.insert(
         items,
-        Said.note("Apps opened after another is chosen play through it.")
+        Said.note("The selected device is used by apps opened after the change.")
       )
     end
 

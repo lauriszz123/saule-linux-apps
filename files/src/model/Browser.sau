@@ -324,12 +324,24 @@ export class Browser
       self.go(entry.path)
       return
     end
+    if entry.previewed() then
+      if not Apps.open("preview", entry.path) then
+        self.notice = "Preview could not be opened."
+      end
+      return
+    end
+    self.edit(entry)
+  end
+
+  -- Open `entry` in the editor: what is done with text, and what can be
+  -- asked for a Markdown file, which opens in Preview otherwise.
+  fn edit(entry: Entry) -> nil
     if not entry.text() then
-      self.notice = "Nothing here opens “" .. entry.name .. "” yet."
+      self.notice = "No app is available to open “" .. entry.name .. "”."
       return
     end
     if not Apps.open("editor", entry.path) then
-      self.notice = "The editor could not be started."
+      self.notice = "Editor could not be opened."
     end
   end
 
@@ -348,7 +360,7 @@ export class Browser
       where = entry!.path
     end
     if not Apps.open("terminal", where) then
-      self.notice = "The terminal could not be started."
+      self.notice = "Terminal could not be opened."
     end
   end
 
@@ -356,7 +368,7 @@ export class Browser
   fn newFolder() -> nil
     local path = FileOps.newFolder(self.folder)
     if path == nil then
-      self.notice = "A folder can't be made here."
+      self.notice = "A folder cannot be created in this location."
       return
     end
     self.query = ""
@@ -416,7 +428,7 @@ export class Browser
       return
     end
     if not Os.exists(self.carried) then
-      self.notice = "What was copied is no longer there."
+      self.notice = "The copied item no longer exists."
       self.carried = ""
       return
     end

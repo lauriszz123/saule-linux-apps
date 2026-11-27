@@ -1,0 +1,24 @@
+--[[
+Task Manager: what is running on the computer and how hard it is
+working, as a Mac's Activity Monitor shows it.
+
+  saule run .
+
+    model   what is running (Monitor), read from `saule-tasks`, and what
+            the window is showing of it (Listing)
+    views   the window: an overview of the processor, memory and
+            graphics; the apps that are open; every process; and the
+            services started with the system
+
+The figures come from `saule-tasks` (saule-linux's `system/src/tasks.rs`),
+which the app starts and reads a sample from every other second. Where
+that program is missing, on another system, the window says so.
+]]
+
+from TaskManagerApp import TaskManagerApp
+
+class Main
+  static fn main()
+    TaskManagerApp().run()
+  end
+end

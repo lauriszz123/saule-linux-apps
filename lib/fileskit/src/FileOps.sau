@@ -57,19 +57,19 @@ export class FileOps
   static fn rename(path: string, name: string) -> string
     local wanted = String.trim(name)
     if not FileOps.valid(wanted) then
-      return "A name can't be empty or have a slash in it."
+      return "The name cannot be empty or contain a slash."
     end
     local target = Folder.join(Folder.parent(path), wanted)
     if target == path then
       return ""
     end
     if Os.exists(target) then
-      return "The name “" .. wanted .. "” is already taken."
+      return "The name “" .. wanted .. "” is already in use."
     end
     if Os.rename(path, target) then
       return ""
     end
-    return "It could not be renamed."
+    return "The item could not be renamed."
   end
 
   -- Copy `path` into `folder`, under a name not yet taken there.

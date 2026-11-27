@@ -62,7 +62,7 @@ export class Session
     end
     if self.pty == nil then
       Session.log.error("could not start a shell", {shell: wanted})
-      self.parser.feed("There is no shell to run on this system.\r\n")
+      self.parser.feed("No shell is available on this system.\r\n")
       self.ended = true
     end
   end

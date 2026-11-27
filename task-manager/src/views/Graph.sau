@@ -1,0 +1,57 @@
+-- How a share has gone over the last two minutes: a bar a sample, the
+-- latest at the right.
+
+from shine import Graphics
+from uikit import *
+from Look import Look
+
+export class Graph extends View
+  -- The shares, oldest first, each 0 to 1, and how many there is room
+  -- for: fewer are drawn from the right, as the first minutes fill.
+  history: table<float>
+  room: integer
+  colour: Color
+  height: float
+
+  fn init(
+    history: table<float>,
+    room: integer,
+    colour: Color,
+    height: float = 56.0,
+    key: string? = nil
+  )
+    self.super(key)
+    self.history = history
+    self.room = room
+    self.colour = colour
+    self.height = height
+  end
+
+  fn body(context: BuildContext) -> View
+    local history = self.history
+    local room = Math.max(self.room, 1)
+    local colour = self.colour
+    local paint = fn(x: float, y: float, width: float, height: float)
+      Look.well.apply()
+      Graphics.rectangle("fill", x, y, width, height, 6.0)
+      -- A gap of a point between bars, each a whole number of points
+      -- wide, so that every bar is as sharp as the next.
+      local inner = width - 8.0
+      local pitch = Math.max(Math.floor(inner / (room as float)) as float, 2.0)
+      local bar = Math.max(pitch - 1.0, 1.0)
+      local right = x + width - 4.0
+      local floor = y + height - 4.0
+      local tallest = height - 8.0
+      colour.apply()
+      local n = #history
+      for i = 1, n do
+        local left = right - ((n - i + 1) as float) * pitch
+        if left >= x + 3.0 then
+          local tall = Math.max(Math.floor(history[i] * tallest + 0.5) as float, 1.0)
+          Graphics.rectangle("fill", left, floor - tall, bar, tall)
+        end
+      end
+    end
+    return Canvas(painter: paint, height: self.height)
+  end
+end

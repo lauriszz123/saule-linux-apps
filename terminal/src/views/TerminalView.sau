@@ -190,7 +190,7 @@ export class TerminalView extends View
         Type.resize(1.0)
       end))
     end
-    local hint = Text("Ctrl+Shift+= and Ctrl+Shift+- change it too.").font(11.0)
+    local hint = Text("The size can also be changed with Ctrl+Shift+= and Ctrl+Shift+-.").font(11.0)
     local foot = HStack(alignment: centre) do
       Spacer()
       show(button("Done", fn()

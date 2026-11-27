@@ -68,22 +68,22 @@ export class WindowsPane extends View
       changed()
     end)
     local keys = self.settings.shortcut("windowed")
-    local hint = "Tiled, windows share the screen; windowed, each has its own size and can be dragged over the others, as on a Mac."
+    local hint = "Tiled windows share the screen without overlapping. Windowed mode lets windows be moved, resized and overlapped."
     if #keys > 0 then
-      hint = hint .. " " .. String.upper(String.join("+", keys)) .. " switches."
+      hint = hint .. " Press " .. String.upper(String.join("+", keys)) .. " to switch."
     end
 
     -- In a pane that scrolls: taller than a netbook's screen leaves it.
     return Said.pane({
       PaneTitle("Desktop & Windows"),
-      Group("Windows", {Row("Arrange windows", arrange), Row("Show the Dock", dock)}),
+      Group("Windows", {Row("Window arrangement", arrange), Row("Show Dock", dock)}),
       WindowsPane.note(hint),
       Group("Tiling", {
-        Row("Space between windows", gap),
-        Row("Grab area beside a gap", grab),
+        Row("Window gap", gap),
+        Row("Resize handle width", grab),
         Row("Resize step", resize),
       }),
-      Group("New windows", {Row("Open next to the focused one", where)}),
+      Group("New Windows", {Row("Placement", where)}),
     })
   end
 

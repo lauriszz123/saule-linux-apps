@@ -1,0 +1,25 @@
+--[[
+Preview: pictures, PDF documents and Markdown files, looked at and not
+changed, as a Mac's Preview shows them.
+
+  saule run .              nothing open: asks what to open
+  saule run . FILE         that file
+
+    model   the document (Document), a picture in memory (Picture), a
+            Markdown file as blocks of text (Markdown), a PDF's pages
+            (Pages), and how what is shown is zoomed and moved (Viewing)
+    views   the window: a bar, and under it the picture, the page or the
+            formatted text
+
+A PDF's pages are drawn by `saule-pdf` (saule-linux's `pdf/`), a page at a
+time as it is turned to. Where that program is missing, on another system,
+a PDF cannot be shown and the window says so.
+]]
+
+from PreviewApp import PreviewApp
+
+class Main
+  static fn main()
+    PreviewApp().run()
+  end
+end

@@ -1,0 +1,93 @@
+-- One process, as `saule-tasks` said it was at the last sample.
+
+export class Task
+  pid: integer
+  -- The process that started it.
+  parent: integer
+  -- Whose it is: the account's number and its name.
+  uid: integer
+  user: string
+  -- What it is to a person: "a" an app, "w" the window manager, "s" a
+  -- service started with the system, "k" one of the kernel's own
+  -- threads, "p" anything else.
+  kind: string
+  -- Its share of one processor since the last sample, in percent, and
+  -- the memory it holds, in kB.
+  cpu: float
+  memory: integer
+  threads: integer
+  name: string
+  -- What it was started as, with its arguments.
+  command: string
+
+  fn init(
+    pid: integer,
+    parent: integer,
+    uid: integer,
+    user: string,
+    kind: string,
+    cpu: float,
+    memory: integer,
+    threads: integer,
+    name: string,
+    command: string
+  )
+    self.pid = pid
+    self.parent = parent
+    self.uid = uid
+    self.user = user
+    self.kind = kind
+    self.cpu = cpu
+    self.memory = memory
+    self.threads = threads
+    self.name = name
+    self.command = command
+  end
+
+  -- An app's name as its window has it: "task-manager" is "Task
+  -- Manager".
+  fn title() -> string
+    local words: table<string> = {}
+    for word in String.split(self.name, "-") do
+      if word != "" then
+        local first = String.upper(String.sub(word, 1, 1))
+        Table.insert(words, first .. String.sub(word, 2))
+      end
+    end
+    if #words == 0 then
+      return self.name
+    end
+    return String.join(" ", words)
+  end
+
+  -- What a service is called, where it has a name a person would know
+  -- it by; else the program's own.
+  fn service() -> string
+    return match self.name
+      case "init" then "System Startup"
+      case "saule-system" then "System Services"
+      case "session" then "Window Manager"
+      case "dbus-daemon" then "Message Bus"
+      case "bluetoothd" then "Bluetooth"
+      case "wpa_supplicant" then "Wi-Fi"
+      case "udhcpc" then "Network Configuration"
+      case "dhcpcd" then "Network Configuration"
+      case _ then self.name
+    end
+  end
+
+  -- What a service is for, where that is known; "" otherwise.
+  fn purpose() -> string
+    return match self.name
+      case "init" then "Starts the system and its services"
+      case "saule-system" then "Power, sound, network and storage"
+      case "session" then "Windows and the desktop"
+      case "dbus-daemon" then "Communication between system services"
+      case "bluetoothd" then "Bluetooth devices"
+      case "wpa_supplicant" then "Wireless network connections"
+      case "udhcpc" then "Obtains a network address"
+      case "dhcpcd" then "Obtains a network address"
+      case _ then ""
+    end
+  end
+end

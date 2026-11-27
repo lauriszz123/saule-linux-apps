@@ -1,0 +1,81 @@
+-- A stopwatch: how long it has run, the laps taken, and whether it is
+-- running. It goes by a clock handed to it (`now`, in seconds), so that
+-- it counts the same whoever looks at it and however often.
+
+export class Stopwatch
+  running: boolean
+  -- What had run before it was last started, and when that was.
+  local before: float
+  local since: float
+  -- When each lap ended, as the time run in all, oldest first.
+  laps: table<float>
+
+  fn init()
+    self.running = false
+    self.before = 0.0
+    self.since = 0.0
+    self.laps = {}
+  end
+
+  -- The time run in all, at `now`.
+  fn elapsed(now: float) -> float
+    if self.running then
+      return self.before + (now - self.since)
+    end
+    return self.before
+  end
+
+  fn start(now: float) -> nil
+    if not self.running then
+      self.running = true
+      self.since = now
+    end
+  end
+
+  fn stop(now: float) -> nil
+    if self.running then
+      self.before = self.elapsed(now)
+      self.running = false
+    end
+  end
+
+  -- A lap ends, and the next begins.
+  fn lap(now: float) -> nil
+    if self.running then
+      Table.insert(self.laps, self.elapsed(now))
+    end
+  end
+
+  fn reset() -> nil
+    self.running = false
+    self.before = 0.0
+    self.laps = {}
+  end
+
+  -- How long lap `i` took.
+  fn lapTime(i: integer) -> float
+    local ended = self.laps[i] ?? 0.0
+    if i <= 1 then
+      return ended
+    end
+    return ended - (self.laps[i - 1] ?? 0.0)
+  end
+
+  -- A time as a stopwatch says it: "01:23.45", and with hours once
+  -- there is one, "1:01:23.45".
+  static fn said(seconds: float) -> string
+    local hundredths = Math.floor(seconds * 100.0)
+    local whole = hundredths / 100
+    local minutes = whole / 60
+    local text = String.format(
+      "%02d:%02d.%02d",
+      minutes % 60,
+      whole % 60,
+      hundredths % 100
+    )
+    if minutes >= 60 then
+      return (minutes / 60) .. ":" .. text
+    end
+    return text
+  end
+end

@@ -1,0 +1,101 @@
+-- The bar along the top: Open at its left, the document's name in the
+-- middle, and at its right what goes with the kind of document: larger
+-- and smaller for a picture, the pages of a PDF, Edit for Markdown.
+
+from uikit import *
+from model import Document, Kind
+from Look import Look
+from BarButton import BarButton
+
+export class PreviewBar extends View
+  document: Document
+  narrow: boolean
+  onOpen: Action
+  onZoom: ValueChanged<integer>
+  onTurn: ValueChanged<integer>
+  onEdit: Action
+
+  fn init(
+    document: Document,
+    narrow: boolean,
+    onOpen: Action,
+    onZoom: ValueChanged<integer>,
+    onTurn: ValueChanged<integer>,
+    onEdit: Action,
+    key: string? = nil
+  )
+    self.super(key)
+    self.document = document
+    self.narrow = narrow
+    self.onOpen = onOpen
+    self.onZoom = onZoom
+    self.onTurn = onTurn
+    self.onEdit = onEdit
+  end
+
+  fn body(context: BuildContext) -> View
+    local document = self.document
+    local onZoom = self.onZoom
+    local onTurn = self.onTurn
+
+    local open = BarButton("Open…", self.onOpen)
+
+    -- The name, and for a PDF where in it this is.
+    local said = document.title()
+    local pages = document.pages
+    if pages != nil then
+      said = said .. " — Page " .. pages!.page .. " of " .. pages!.count
+    end
+    local name = Text(said).font(13.0).foregroundStyle(Look.text)
+
+    local tools: table<View> = {}
+    if pages != nil then
+      Table.insert(tools, BarButton("‹", fn()
+        onTurn(-1)
+      end, enabled: pages!.page > 1, key: "back"))
+      Table.insert(tools, BarButton("›", fn()
+        onTurn(1)
+      end, enabled: pages!.page < pages!.count, key: "on"))
+      Table.insert(tools, Spacer().frame(width: 4.0))
+    end
+    if document.kind == Kind.Picture or document.kind == Kind.Pdf then
+      Table.insert(tools, BarButton("−", fn()
+        onZoom(-1)
+      end, key: "smaller"))
+      local fitted = document.viewing.zoom == 0.0
+      Table.insert(tools, BarButton("Fit", fn()
+        onZoom(0)
+      end, on: fitted, key: "fit"))
+      Table.insert(tools, BarButton("+", fn()
+        onZoom(1)
+      end, key: "larger"))
+    elseif document.kind == Kind.Markdown then
+      Table.insert(tools, BarButton("Edit", self.onEdit))
+    end
+    local right = HStack(
+      alignment: StackAlignment.Center,
+      sizing: StackSize.Fit,
+      spacing: 6.0,
+      children: tools
+    )
+
+    local narrow = self.narrow
+    local row = HStack(alignment: StackAlignment.Center, spacing: 10.0) do
+      show(open)
+      if narrow and pages != nil then
+        -- No room for the name: where in the document this is.
+        local where = Text(pages!.page .. " of " .. pages!.count).font(12.0)
+        where.foregroundStyle(Look.dimText).lineLimit(1).centered().expanded()
+      elseif narrow then
+        Spacer()
+      else
+        Clip(child: name.lineLimit(1).centered()).expanded()
+      end
+      show(right)
+    end
+    local inset = EdgeInsets.symmetric(horizontal: 10.0)
+    return row.padding(insets: inset).frame(height: Look.barHeight).background(
+      Look.bar
+    )
+  end
+end

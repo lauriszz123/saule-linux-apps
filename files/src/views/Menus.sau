@@ -23,6 +23,11 @@ export class Menus
       Table.insert(items, MenuItem("Open in Terminal", done(fn()
         browser.openTerminal()
       end)))
+    elseif entry.previewed() and entry.text() then
+      -- What Preview shows and the editor can change: Markdown.
+      Table.insert(items, MenuItem("Open in Editor", done(fn()
+        browser.edit(entry)
+      end)))
     end
     Table.insert(items, MenuItem("Rename", done(fn()
       browser.startRenaming()

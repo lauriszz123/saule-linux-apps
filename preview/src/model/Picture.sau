@@ -1,0 +1,45 @@
+-- A picture in memory: read from a PNG or JPEG file, drawn at any size,
+-- and let go of when it is no longer shown.
+
+from shine import Graphics, Image
+
+export class Picture
+  -- Its size in its own pixels.
+  width: integer
+  height: integer
+
+  local handle: Image?
+
+  fn init(handle: Image)
+    self.handle = handle
+    local width, height = handle.getDimensions()
+    self.width = width
+    self.height = height
+  end
+
+  -- The picture in the file at `path`, or nil when it is not one that
+  -- can be read.
+  static fn load(path: string) -> Picture?
+    local handle = Graphics.loadImage(path)
+    if handle == nil then
+      return nil
+    end
+    return Picture(handle!)
+  end
+
+  -- Draw it with its top left at `x`, `y`, each of its pixels `scale`
+  -- across.
+  fn draw(x: float, y: float, scale: float) -> nil
+    local handle = self.handle
+    if handle != nil then
+      Graphics.setColor(1.0, 1.0, 1.0)
+      Graphics.draw(handle!, x, y, 0.0, scale, scale)
+    end
+  end
+
+  -- Let go of it: its memory is given back once nothing holds it. It
+  -- draws nothing afterwards.
+  fn release() -> nil
+    self.handle = nil
+  end
+end

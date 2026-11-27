@@ -25,7 +25,7 @@ export class Shell
     end
     local why = String.trim(err)
     if why == "" then
-      why = "It could not be done."
+      why = "The operation could not be completed."
     end
     return why
   end

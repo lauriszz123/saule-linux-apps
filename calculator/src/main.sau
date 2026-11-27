@@ -1,0 +1,21 @@
+--[[
+Calculator: the four operations, percent and sign, as a Mac's Calculator
+in its basic form.
+
+  saule run .
+
+    Calculator      what is on the display and what has been asked for,
+                    without the window
+    CalculatorView  the display and the keys
+
+The keys of the keyboard work too: digits, + - * /, Enter or = for the
+answer, % , Backspace to take a digit back, Escape or C to clear.
+]]
+
+from CalculatorApp import CalculatorApp
+
+class Main
+  static fn main()
+    CalculatorApp().run()
+  end
+end

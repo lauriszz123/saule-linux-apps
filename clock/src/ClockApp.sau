@@ -1,0 +1,28 @@
+-- Clock as a uikit app: one window.
+
+from uikit import *
+from "wmapi" import WmApp
+from ClockLook import ClockLook
+from ClockWindow import ClockWindow
+
+export class ClockApp extends App
+  fn init()
+    self.super()
+    WmApp.describe(
+      "Clock",
+      Project.version,
+      "The time, a stopwatch and a timer."
+    )
+  end
+
+  fn body() -> Scene
+    return WindowGroup(
+      title: "Clock",
+      width: 380,
+      height: 460,
+      background: ClockLook.window
+    ) do
+      ClockWindow()
+    end
+  end
+end

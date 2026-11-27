@@ -105,14 +105,14 @@ export class AboutView extends View
   -- The facts shown, in order: each a name and its value.
   static fn facts(info: SystemInfo) -> table<table<string>>
     local facts = {
-      {"Computer", info.machine},
+      {"Model", info.machine},
       {"Processor", AboutView.processor(info)},
       {"Graphics", info.graphics},
       {"Memory", AboutView.memory(info)},
       {"Storage", info.storage},
       {"Kernel", info.kernel},
       {"Display", AboutView.display(info)},
-      {"Window manager", info.wm},
+      {"Window Manager", info.wm},
     }
     -- Not at the top, where the system's version is.
     if AboutView.hosted(info) then
@@ -175,33 +175,34 @@ export class AboutView extends View
     return name
   end
 
-  -- Memory: what is in use now, of all there is: "412 MB used of 1 GB".
-  -- Only all there is when what is in use isn't known.
+  -- How much memory the computer has, from the kB the system counts:
+  -- "512 MB", "1 GB", "1.5 GB", "8 GB".
+  --
+  -- The system counts a little less than is fitted (the firmware and
+  -- the graphics chip keep some back), so the count is taken up to the
+  -- next size memory comes in: a quarter of a gigabyte under four, a
+  -- whole one from there.
   static fn memory(info: SystemInfo) -> string
-    local all = AboutView.memorySize(info.memory)
-    if all == "" or info.memoryUsed <= 0 then
-      return all
-    end
-    local mb = (info.memoryUsed as float) / 1024.0
-    local used = String.format("%.0f MB", mb)
-    if mb >= 1000.0 then
-      used = String.format("%.1f GB", mb / 1024.0)
-    end
-    return used .. " used of " .. all
-  end
-
-  -- All the memory, in kB, as a Mac says it: whole gigabytes, or megabytes
-  -- below one. The kernel keeps a little for itself, so 1 GB reads as a
-  -- bit less: 0.95 still counts as 1 GB.
-  static fn memorySize(kb: integer) -> string
-    if kb <= 0 then
+    if info.memory <= 0 then
       return ""
     end
-    local gb = (kb as float) / 1048576.0
-    if gb < 0.95 then
-      return String.format("%.0f MB", (kb as float) / 1024.0)
+    local megabytes = (info.memory + 1023) / 1024
+    local step = 1024
+    if megabytes < 4096 then
+      step = 256
     end
-    return String.format("%.0f GB", Math.max(gb, 1.0))
+    local fitted = (megabytes + step - 1) / step * step
+    if fitted < 1024 then
+      return fitted .. " MB"
+    end
+    if fitted % 1024 == 0 then
+      return (fitted / 1024) .. " GB"
+    end
+    local said = String.format("%.2f", (fitted as float) / 1024.0)
+    if String.ends(said, "0") then
+      said = String.sub(said, 1, String.len(said) - 1)
+    end
+    return said .. " GB"
   end
 
   static fn display(info: SystemInfo) -> string

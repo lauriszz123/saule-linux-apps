@@ -1,0 +1,176 @@
+-- Calendar's window: the bar, the month, and beside it the day chosen;
+-- over them the sheet an event is written in.
+--
+-- The keys:
+--
+--   arrows                 the day before, after, a week before, after
+--   Page Up, Page Down     the month before, the month after
+--   T, Ctrl+T              today
+--   Ctrl+N, Return         a new event on the day chosen
+--   Delete                 delete the event chosen
+
+from uikit import *
+from model import Events, Showing
+from Look import Look
+from CalendarBar import CalendarBar
+from MonthView import MonthView
+from DayPanel import DayPanel
+from EventSheet import EventSheet
+
+export class CalendarWindow extends View
+  events: Events
+  showing: Showing
+
+  fn init(events: Events, showing: Showing, key: string? = nil)
+    self.super(key)
+    self.events = events
+    self.showing = showing
+  end
+
+  -- It has a tick to run: see `View.ticks`.
+  fn ticks() -> boolean
+    return true
+  end
+
+  fn tick(el: Element, dt: float) -> nil
+    local bag: table = el.data.scratch
+    -- Midnight moves today's mark.
+    local today = Os.date("%d")
+    if today != (bag.today as string?) then
+      bag.today = today
+      el.markNeedsBuild()
+    end
+    local narrow = el.size.width > 0.0 and el.size.width < Look.narrowBelow
+    if narrow != ((bag.narrow as boolean?) ?? false) then
+      bag.narrow = narrow
+      el.markNeedsBuild()
+    end
+  end
+
+  fn body(context: BuildContext) -> View
+    local events = self.events
+    local showing = self.showing
+    local revision = context.state("revision", 0)
+    local refresh = fn()
+      revision.set(revision.int(0) + 1)
+    end
+    local bag: table = context.data().scratch
+    local narrow = (bag.narrow as boolean?) ?? false
+
+    local compose = fn()
+      showing.compose()
+      refresh()
+    end
+    local month = MonthView(events, showing, refresh, compose)
+    local panel = DayPanel(events, showing, refresh)
+    local line = Spacer().frame(height: 1.0).background(Look.hairline)
+
+    local window = VStack(alignment: StackAlignment.Fill) do
+      CalendarBar(showing, refresh)
+      show(line)
+      if narrow then
+        month.expanded()
+        Spacer().frame(height: 1.0).background(Look.hairline)
+        panel.frame(height: Look.sideHeight)
+      else
+        HStack(alignment: StackAlignment.Fill) do
+          month.expanded()
+          Spacer().frame(width: 1.0).background(Look.hairline)
+          panel.frame(width: Look.sideWidth)
+        end.expanded()
+      end
+      if events.problem != "" then
+        CalendarWindow.notice(events.problem)
+      end
+    end
+
+    local layers: table<View> = {window}
+    local draft = showing.draft
+    if draft != nil then
+      local close = fn()
+        showing.draft = nil
+        refresh()
+      end
+      Table.insert(layers, EventSheet(draft!, fn()
+        if not draft!.ready() then
+          return
+        end
+        local changed = draft!.event
+        if changed != nil then
+          events.change(changed!, draft!.date, draft!.kept(), draft!.title)
+          showing.event = changed
+        else
+          showing.event = events.add(draft!.date, draft!.kept(), draft!.title)
+        end
+        close()
+      end, fn()
+        local changed = draft!.event
+        if changed != nil then
+          events.remove(changed!)
+          showing.event = nil
+        end
+        close()
+      end, close, refresh))
+    end
+
+    local keys = fn(e: KeyEvent) -> boolean
+      if showing.draft != nil then
+        return false
+      end
+      local handled = CalendarWindow.key(events, showing, e)
+      if handled then
+        refresh()
+      end
+      return handled
+    end
+    local all = ZStack(children: layers)
+    local listening = KeyboardListener(onKeyDown: keys, child: all)
+    return Theme(data: Look.theme(), child: listening)
+  end
+
+  -- What went wrong, along the foot.
+  static fn notice(said: string) -> View
+    local text = Text(said).font(12.0).foregroundStyle(Look.warning)
+    local inset = EdgeInsets.symmetric(horizontal: 12.0)
+    return text.lineLimit(1).padding(insets: inset).frame(height: 26.0).background(
+      Look.bar
+    )
+  end
+
+  -- One key. True when it was the window's.
+  static fn key(events: Events, showing: Showing, e: KeyEvent) -> boolean
+    local key = e.key
+    if e.command() then
+      match key
+        case "n" then showing.compose()
+        case "t" then showing.today()
+        case _ then
+          return false
+      end
+      return true
+    end
+    if e.alt then
+      return false
+    end
+    match key
+      case "left" then showing.choose(showing.day.addDays(-1))
+      case "right" then showing.choose(showing.day.addDays(1))
+      case "up" then showing.choose(showing.day.addDays(-7))
+      case "down" then showing.choose(showing.day.addDays(7))
+      case "pageup" then showing.turn(-1)
+      case "pagedown" then showing.turn(1)
+      case "t" then showing.today()
+      case "return" then showing.compose()
+      case "delete" then
+        local chosen = showing.event
+        if chosen == nil then
+          return false
+        end
+        events.remove(chosen!)
+        showing.event = nil
+      case _ then
+        return false
+    end
+    return true
+  end
+end

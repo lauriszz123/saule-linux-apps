@@ -54,6 +54,7 @@ export class Entry
     return match self.extension()
       case "txt" then "Plain Text"
       case "md" then "Markdown"
+      case "markdown" then "Markdown"
       case "sau" then "Saule Source"
       case "conf" then "Settings"
       case "config" then "Settings"
@@ -83,6 +84,23 @@ export class Entry
       case "ttf" then "Font"
       case "" then "Document"
       case _ then String.upper(self.extension()) .. " Document"
+    end
+  end
+
+  -- Whether Preview shows it: a picture it reads, a PDF, a Markdown
+  -- file (which is text too, and can be opened in the editor instead).
+  fn previewed() -> boolean
+    if self.folder then
+      return false
+    end
+    return match self.extension()
+      case "png" then true
+      case "jpg" then true
+      case "jpeg" then true
+      case "pdf" then true
+      case "md" then true
+      case "markdown" then true
+      case _ then false
     end
   end
 

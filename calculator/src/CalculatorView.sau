@@ -1,0 +1,220 @@
+-- The calculator's window: the display, and under it five rows of keys
+-- that share the window's width and height between them.
+
+from uikit import *
+from Calculator import Calculator
+
+-- One key: a word or a sign on a rounded ground, darker while pressed.
+export class CalculatorKey extends View
+  label: string
+  fill: Color
+  ink: Color
+  onPressed: Action
+
+  fn init(label: string, fill: Color, ink: Color, onPressed: Action)
+    self.super("key:" .. label)
+    self.label = label
+    self.fill = fill
+    self.ink = ink
+    self.onPressed = onPressed
+  end
+
+  fn body(context: BuildContext) -> View
+    local data = context.data()
+    local fill = self.fill
+    if data.pressed then
+      fill = Color(fill.r * 0.75, fill.g * 0.75, fill.b * 0.75, fill.a)
+    elseif data.hovered then
+      fill = Color(
+        Math.min(fill.r * 1.12, 1.0),
+        Math.min(fill.g * 1.12, 1.0),
+        Math.min(fill.b * 1.12, 1.0),
+        fill.a
+      )
+    end
+    local label = Text(self.label).font(20.0).foregroundStyle(self.ink)
+    local face = label.centered().background(fill, 10.0)
+    return GestureArea(child: face, onTap: self.onPressed, onTapDown: fn()
+      context.markNeedsBuild()
+    end, onTapUp: fn()
+      context.markNeedsBuild()
+    end, onHover: fn(over: boolean)
+      context.markNeedsBuild()
+    end)
+  end
+end
+
+export class CalculatorView extends View
+  calculator: Calculator
+
+  static window: Color = Color(0.13, 0.13, 0.15)
+  static text: Color = Color(0.97, 0.97, 0.98)
+  static digit: Color = Color(0.25, 0.25, 0.28)
+  static function: Color = Color(0.42, 0.42, 0.46)
+  static operator: Color = Color(0.98, 0.58, 0.12)
+  static operatorOn: Color = Color(0.99, 0.80, 0.52)
+
+  fn init(calculator: Calculator, key: string? = nil)
+    self.super(key)
+    self.calculator = calculator
+  end
+
+  fn body(context: BuildContext) -> View
+    local calculator = self.calculator
+    local revision = context.state("revision", 0)
+    local refresh = fn()
+      revision.set(revision.int(0) + 1)
+    end
+    local press = fn(what: string)
+      CalculatorView.pressed(calculator, what)
+      refresh()
+    end
+
+    -- Smaller as the number grows longer, so that nine digits fit.
+    local shown = calculator.shown
+    local size = 46.0
+    if String.len(shown) > 7 then
+      size = 36.0
+    end
+    if String.len(shown) > 9 then
+      size = 28.0
+    end
+    local display = Text(shown).font(size).foregroundStyle(CalculatorView.text)
+    local readout = display.lineLimit(1).aligned(Alignment.bottomRight()).padding(
+      insets: EdgeInsets.only(left: 6.0, right: 6.0, bottom: 4.0)
+    )
+
+    local clear = "AC"
+    if calculator.entering() then
+      clear = "C"
+    end
+    local rows: table<table<string>> = {
+      {clear, "±", "%", "÷"},
+      {"7", "8", "9", "×"},
+      {"4", "5", "6", "−"},
+      {"1", "2", "3", "+"},
+      {"0", ".", "="},
+    }
+    local built: table<View> = {readout.frame(height: 96.0)}
+    for row in rows do
+      local keys: table<View> = {}
+      for label in row do
+        local key = CalculatorView.key(calculator, label, press)
+        -- Nought is two keys wide.
+        if label == "0" then
+          Table.insert(keys, key.expanded(2))
+        else
+          Table.insert(keys, key.expanded())
+        end
+      end
+      local line = HStack(
+        alignment: StackAlignment.Fill,
+        spacing: 8.0,
+        children: keys
+      )
+      Table.insert(built, line.expanded())
+    end
+    local pad = VStack(
+      alignment: StackAlignment.Fill,
+      spacing: 8.0,
+      children: built
+    )
+
+    local keys = fn(e: KeyEvent) -> boolean
+      local what = CalculatorView.keyOf(e)
+      if what == "" then
+        return false
+      end
+      press(what)
+      return true
+    end
+    return KeyboardListener(onKeyDown: keys, child: pad.padding(12.0))
+  end
+
+  -- One key, coloured by what it is.
+  static fn key(
+    calculator: Calculator,
+    label: string,
+    press: ValueChanged<string>
+  ) -> View
+    local fill = CalculatorView.digit
+    local ink = CalculatorView.text
+    if label == "AC" or label == "C" or label == "±" or label == "%" then
+      fill = CalculatorView.function
+    elseif label == "÷" or label == "×" or label == "−" or label == "+" or label == "=" then
+      fill = CalculatorView.operator
+      -- The operation waiting for its second number is lit.
+      if label == calculator.operation then
+        fill = CalculatorView.operatorOn
+        ink = CalculatorView.operator
+      end
+    end
+    return CalculatorKey(label, fill, ink, fn()
+      press(label)
+    end)
+  end
+
+  -- Do what the key labelled `what` does.
+  static fn pressed(calculator: Calculator, what: string) -> nil
+    if what >= "0" and what <= "9" and String.len(what) == 1 then
+      calculator.digit(what)
+      return
+    end
+    match what
+      case "." then calculator.point()
+      case "AC" then calculator.clear()
+      case "C" then calculator.clear()
+      case "±" then calculator.negate()
+      case "%" then calculator.percent()
+      case "=" then calculator.equals()
+      case "back" then calculator.back()
+      case _ then calculator.operate(what)
+    end
+  end
+
+  -- The key of the calculator a key of the keyboard stands for, or "".
+  -- The signs go by where they are on a US keyboard: + is Shift and =,
+  -- × is Shift and 8, % is Shift and 5.
+  static fn keyOf(e: KeyEvent) -> string
+    if e.command() or e.alt then
+      return ""
+    end
+    local key = e.key
+    if e.shift then
+      return match key
+        case "=" then "+"
+        case "8" then "×"
+        case "5" then "%"
+        case _ then ""
+      end
+    end
+    if String.len(key) == 1 and key >= "0" and key <= "9" then
+      return key
+    end
+    if String.starts(key, "kp") and String.len(key) == 3 then
+      local digit = String.sub(key, 3, 3)
+      if digit >= "0" and digit <= "9" then
+        return digit
+      end
+    end
+    return match key
+      case "return" then "="
+      case "kpenter" then "="
+      case "=" then "="
+      case "-" then "−"
+      case "/" then "÷"
+      case "." then "."
+      case "," then "."
+      case "x" then "×"
+      case "backspace" then "back"
+      case "escape" then "AC"
+      case "c" then "AC"
+      case "kpplus" then "+"
+      case "kpminus" then "−"
+      case "kpmultiply" then "×"
+      case "kpdivide" then "÷"
+      case "kpperiod" then "."
+      case _ then ""
+    end
+  end
+end

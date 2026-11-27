@@ -1,0 +1,110 @@
+-- The overview: the processor, memory and the graphics chip, each how
+-- busy it is now and how it has been.
+
+from uikit import *
+from model import Monitor
+from Look import Look
+from Said import Said
+from MeterCard import MeterCard
+
+export class OverviewPane extends View
+  monitor: Monitor
+  -- Side by side in a wide window, one under another in a narrow one.
+  narrow: boolean
+
+  fn init(monitor: Monitor, narrow: boolean, key: string? = nil)
+    self.super(key)
+    self.monitor = monitor
+    self.narrow = narrow
+  end
+
+  fn body(context: BuildContext) -> View
+    local m = self.monitor
+    local room = Monitor.kept
+
+    local idle = Math.max(100.0 - m.busy, 0.0)
+    local processor = MeterCard(
+      "Processor",
+      Said.percent(m.busy),
+      "in use",
+      m.busyBefore,
+      room,
+      Look.processor,
+      {
+        {"User", Said.percent(m.inPrograms)},
+        {"System", Said.percent(m.inKernel)},
+        {"Idle", Said.percent(idle)},
+        {"Cores", tostring(m.cores)},
+        {"Load average", m.load},
+      }
+    )
+
+    local memoryFacts: table<table<string>> = {
+      {"Used", Said.memory(m.memoryUsed)},
+      {"Cached files", Said.memory(m.memoryCached)},
+      {"Available", Said.memory(m.memoryAvailable)},
+    }
+    if m.swap > 0 then
+      Table.insert(memoryFacts, {"Swap used", Said.memory(m.swapUsed)})
+    else
+      Table.insert(memoryFacts, {"Swap", "None"})
+    end
+    Table.insert(memoryFacts, {"Installed", Said.fitted(m.memory)})
+    local memory = MeterCard(
+      "Memory",
+      Said.memory(m.memoryUsed),
+      "of " .. Said.fitted(m.memory),
+      m.memoryBefore,
+      room,
+      Look.memory,
+      memoryFacts
+    )
+
+    local graphics = MeterCard(
+      "Graphics",
+      "—",
+      "",
+      m.graphicsBefore,
+      room,
+      Look.graphics,
+      {},
+      note: "Usage is not reported by this graphics chip."
+    )
+    if m.graphics >= 0.0 then
+      local facts: table<table<string>> = {
+        {"Idle", Said.percent(Math.max(100.0 - m.graphics, 0.0))},
+      }
+      if m.graphicsMemory > 0 then
+        Table.insert(facts, {
+          "Memory used",
+          Said.memory(Math.max(m.graphicsMemoryUsed, 0)),
+        })
+        Table.insert(facts, {"Memory", Said.memory(m.graphicsMemory)})
+      end
+      graphics = MeterCard(
+        "Graphics",
+        Said.percent(m.graphics),
+        "in use",
+        m.graphicsBefore,
+        room,
+        Look.graphics,
+        facts
+      )
+    end
+
+    if self.narrow then
+      local column = VStack(alignment: StackAlignment.Fill, spacing: 12.0) do
+        show(processor)
+        show(memory)
+        show(graphics)
+      end
+      return ScrollView(child: column.padding(14.0))
+    end
+    local row = HStack(alignment: StackAlignment.Leading, spacing: 12.0) do
+      processor.expanded()
+      memory.expanded()
+      graphics.expanded()
+    end
+    return ScrollView(child: row.padding(14.0))
+  end
+end

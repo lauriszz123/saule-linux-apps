@@ -1,0 +1,154 @@
+-- What Preview has open: a picture, a Markdown file or a PDF, or
+-- nothing; and why something could not be opened.
+
+from "fileskit" import Folder
+from Picture import Picture
+from Markdown import Block, Markdown
+from Pages import Pages
+from Viewing import Viewing
+
+export enum Kind
+  None,
+  Picture,
+  Markdown,
+  Pdf
+end
+
+export class Document
+  path: string
+  kind: Kind
+  -- A file to open once there is a window: a picture cannot be read
+  -- before there is one to draw it in.
+  pending: string
+  -- Why the last thing asked for could not be opened; "" when it could.
+  problem: string
+
+  picture: Picture?
+  blocks: table<Block>
+  pages: Pages?
+
+  viewing: Viewing
+  -- Counted up each time something is opened: views keep what they
+  -- worked out for one document apart from the next's by it.
+  revision: integer
+
+  -- The largest Markdown file read, in bytes.
+  static largest: integer = 2000000
+
+  fn init()
+    self.path = ""
+    self.kind = Kind.None
+    self.pending = ""
+    self.problem = ""
+    self.picture = nil
+    self.blocks = {}
+    self.pages = nil
+    self.viewing = Viewing()
+    self.revision = 0
+  end
+
+  -- What a file is, by the end of its name.
+  static fn kindOf(path: string) -> Kind
+    local name = String.lower(path)
+    for ending in {".png", ".jpg", ".jpeg"} do
+      if String.ends(name, ending) then
+        return Kind.Picture
+      end
+    end
+    if String.ends(name, ".md") or String.ends(name, ".markdown") then
+      return Kind.Markdown
+    end
+    if String.ends(name, ".pdf") then
+      return Kind.Pdf
+    end
+    return Kind.None
+  end
+
+  -- The file's name, or "" with nothing open.
+  fn title() -> string
+    if self.path == "" then
+      return ""
+    end
+    return Folder.nameOf(self.path)
+  end
+
+  -- The folder the file is in; the home folder with nothing open.
+  fn folder() -> string
+    if self.path == "" then
+      return Os.getenv("HOME") ?? "/"
+    end
+    return Folder.parent(self.path)
+  end
+
+  -- Let go of what is open.
+  fn close() -> nil
+    local picture = self.picture
+    if picture != nil then
+      picture!.release()
+      self.picture = nil
+    end
+    local pages = self.pages
+    if pages != nil then
+      pages!.close()
+      self.pages = nil
+    end
+    self.blocks = {}
+    self.kind = Kind.None
+    self.path = ""
+  end
+
+  -- Open the file at `path`. True when it could be; when not, what was
+  -- open stays open and `problem` says why.
+  fn open(path: string) -> boolean
+    local name = Folder.nameOf(path)
+    local kind = Document.kindOf(path)
+    if not Os.exists(path) then
+      self.problem = "“" .. name .. "” could not be found."
+      return false
+    end
+    if kind == Kind.None then
+      self.problem = "“" .. name .. "” cannot be opened in Preview."
+      return false
+    end
+
+    if kind == Kind.Picture then
+      local picture = Picture.load(path)
+      if picture == nil then
+        self.problem = "“" .. name .. "” could not be opened. The picture may be damaged."
+        return false
+      end
+      self.close()
+      self.picture = picture
+    elseif kind == Kind.Markdown then
+      local file = Io.open(path, IoMode.Read)
+      if file == nil then
+        self.problem = "“" .. name .. "” could not be opened."
+        return false
+      end
+      local text = file!.read("a") ?? ""
+      file!.close()
+      if String.len(text) > Document.largest then
+        self.problem = "“" .. name .. "” is too large to open."
+        return false
+      end
+      self.close()
+      self.blocks = Markdown.parse(text, Folder.parent(path))
+    else
+      local pages = Pages(path)
+      if pages.problem != "" then
+        self.problem = "“" .. name .. "” could not be opened. " .. pages.problem
+        pages.close()
+        return false
+      end
+      self.close()
+      self.pages = pages
+    end
+
+    self.path = path
+    self.kind = kind
+    self.problem = ""
+    self.viewing.reset()
+    self.revision = self.revision + 1
+    return true
+  end
+end

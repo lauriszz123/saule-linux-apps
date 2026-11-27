@@ -1,0 +1,29 @@
+-- Calendar as a uikit app: one window.
+
+from uikit import *
+from "wmapi" import WmApp
+from model import Events, Showing
+from views import CalendarWindow, Look
+
+export class CalendarApp extends App
+  events: Events
+  showing: Showing
+
+  fn init()
+    self.super()
+    self.events = Events()
+    self.showing = Showing()
+    WmApp.describe("Calendar", Project.version, "Keep track of events.")
+  end
+
+  fn body() -> Scene
+    return WindowGroup(
+      title: "Calendar",
+      width: 860,
+      height: 580,
+      background: Look.window
+    ) do
+      CalendarWindow(self.events, self.showing)
+    end
+  end
+end

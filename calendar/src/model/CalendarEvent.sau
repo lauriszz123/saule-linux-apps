@@ -1,0 +1,80 @@
+-- One event: a day, a title, and a time of day unless it lasts all day.
+
+from uikit import Date
+
+export class CalendarEvent
+  date: Date
+  -- Minutes after midnight, or -1 for an event that lasts all day.
+  minutes: integer
+  title: string
+
+  fn init(date: Date, minutes: integer, title: string)
+    self.date = date
+    self.minutes = minutes
+    self.title = title
+  end
+
+  fn allDay() -> boolean
+    return self.minutes < 0
+  end
+
+  -- A time of day as a clock says it: "09:05".
+  static fn clock(minutes: integer) -> string
+    return String.format("%02d:%02d", minutes / 60, minutes % 60)
+  end
+
+  -- When it is, as a list says it: the time, or "All-day".
+  fn time() -> string
+    if self.allDay() then
+      return "All-day"
+    end
+    return CalendarEvent.clock(self.minutes)
+  end
+
+  -- Minutes after midnight from "09:05", or -1 for anything else.
+  static fn minutesOf(text: string) -> integer
+    local parts = String.split(text, ":")
+    if #parts != 2 then
+      return -1
+    end
+    local hours = parts[1] as integer?
+    local minutes = parts[2] as integer?
+    if hours == nil or minutes == nil then
+      return -1
+    end
+    if hours! < 0 or hours! > 23 or minutes! < 0 or minutes! > 59 then
+      return -1
+    end
+    return hours! * 60 + minutes!
+  end
+
+  -- A date from "2026-11-27", or nil.
+  static fn dateOf(text: string) -> Date?
+    local parts = String.split(text, "-")
+    if #parts != 3 then
+      return nil
+    end
+    local year = parts[1] as integer?
+    local month = parts[2] as integer?
+    local day = parts[3] as integer?
+    if year == nil or month == nil or day == nil then
+      return nil
+    end
+    if month! < 1 or month! > 12 or day! < 1 or day! > Date.lengthOfMonth(
+      year!,
+      month!
+    ) then
+      return nil
+    end
+    return Date(year!, month!, day!)
+  end
+
+  -- Whether it comes before `other` in a day: those that last all day
+  -- first, then by time, then by title.
+  fn before(other: CalendarEvent) -> boolean
+    if self.minutes != other.minutes then
+      return self.minutes < other.minutes
+    end
+    return String.lower(self.title) < String.lower(other.title)
+  end
+end

@@ -1,0 +1,103 @@
+-- The question asked before a process is ended, as a sheet over the
+-- window: quit it, which lets it finish what it is doing, force it to
+-- quit, or leave it.
+
+from uikit import *
+from Look import Look
+
+export class QuitSheet extends View
+  name: string
+  onQuit: Action
+  onForce: Action
+  onCancel: Action
+
+  fn init(
+    name: string,
+    onQuit: Action,
+    onForce: Action,
+    onCancel: Action,
+    key: string? = nil
+  )
+    self.super(key)
+    self.name = name
+    self.onQuit = onQuit
+    self.onForce = onForce
+    self.onCancel = onCancel
+  end
+
+  fn body(context: BuildContext) -> View
+    local onCancel = self.onCancel
+    local question = Text(
+      "Are you sure you want to quit “" .. self.name .. "”?"
+    ).font(14.0).foregroundStyle(Look.text)
+    local detail = Text(
+      "Quit lets it close normally. Force Quit ends it immediately, and unsaved changes are lost."
+    ).font(12.0).foregroundStyle(Look.dimText)
+    local inset = EdgeInsets.symmetric(horizontal: 14.0, vertical: 6.0)
+    local cancel = Button(
+      label: "Cancel",
+      onPressed: onCancel,
+      color: Look.button,
+      textColor: Look.text,
+      padding: inset,
+      autofocus: true
+    )
+    local force = Button(
+      label: "Force Quit",
+      onPressed: self.onForce,
+      color: Look.button,
+      textColor: Look.text,
+      padding: inset
+    )
+    local quit = Button(
+      label: "Quit",
+      onPressed: self.onQuit,
+      color: Look.danger,
+      textColor: Look.text,
+      padding: inset
+    )
+    local buttons = HStack(alignment: StackAlignment.Center, spacing: 8.0) do
+      Spacer()
+      cancel.frame(width: 84.0)
+      force.frame(width: 104.0)
+      quit.frame(width: 84.0)
+    end
+    local column = VStack(
+      alignment: StackAlignment.Fill,
+      sizing: StackSize.Fit,
+      spacing: 8.0
+    ) do
+      question.lineLimit(3)
+      detail.lineLimit(3)
+      Spacer().frame(height: 6.0)
+      show(buttons)
+    end
+    local card = column.padding(18.0).background(
+      Look.card,
+      12.0,
+      border: Look.edge
+    )
+    local nothing = fn()
+    end
+    local held = GestureArea(child: card.frame(width: 400.0), onTap: nothing)
+    local over = held.centered().background(Look.screen)
+    local keys = fn(e: KeyEvent) -> boolean
+      if e.key == "escape" then
+        onCancel()
+      end
+      -- The window's own keys are not for now.
+      return true
+    end
+    -- A click or a turn of the wheel outside the card goes nowhere
+    -- while it is up.
+    local behind = GestureArea(
+      child: over,
+      onTap: nothing,
+      onSecondaryTap: nothing,
+      onScroll: fn(dx: float, dy: float) -> boolean
+        return true
+      end
+    )
+    return Focus(child: behind, modal: true, onKeyDown: keys)
+  end
+end

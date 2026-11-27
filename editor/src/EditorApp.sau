@@ -18,7 +18,7 @@ export class EditorApp extends App
     WmApp.describe(
       "Editor",
       Project.version,
-      "Plain text in a window.",
+      "Create and edit plain text documents.",
       settings: true
     )
 

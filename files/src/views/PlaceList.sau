@@ -71,7 +71,7 @@ export class PlaceList extends View
         browser.go(Places.home())
       end
       if Drives.eject(drive) then
-        browser.notice = "“" .. drive.label .. "” can be taken out once it has gone from the list."
+        browser.notice = "“" .. drive.label .. "” can be removed once it disappears from the sidebar."
       else
         browser.notice = "“" .. drive.label .. "” could not be ejected."
       end

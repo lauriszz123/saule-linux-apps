@@ -1,0 +1,226 @@
+-- What the window is showing of what is running: which of its four
+-- views, the processes in the order and of the kind asked for, the one
+-- chosen, and a question waiting for its answer.
+--
+-- The views call these and build the window again; nothing here draws.
+
+from Task import Task
+from Monitor import Monitor
+
+export enum Tab
+  Overview,
+  Apps,
+  Processes,
+  Startup
+end
+
+export enum SortBy
+  Name,
+  Cpu,
+  Memory,
+  Threads,
+  Pid,
+  User
+end
+
+export class Listing
+  tab: Tab
+
+  -- What is typed in the search field: only names holding it are shown.
+  query: string
+  -- Whose processes are listed: "all", "mine" (the person's own) or
+  -- "system" (everybody else's).
+  scope: string
+  by: SortBy
+  ascending: boolean
+
+  -- The number of the process chosen, or 0.
+  chosen: integer
+  -- The number of the process the question is about, or 0 for none.
+  asking: integer
+  -- Something to say once: why a process could not be ended.
+  notice: string
+
+  -- How wide the list is shown, in points; 0 before it is known. The
+  -- views leave out the columns there is no room for.
+  width: float
+
+  fn init()
+    self.tab = Tab.Overview
+    self.query = ""
+    self.scope = "mine"
+    self.by = SortBy.Cpu
+    self.ascending = false
+    self.chosen = 0
+    self.asking = 0
+    self.notice = ""
+    self.width = 0.0
+  end
+
+  fn show(tab: Tab) -> nil
+    if tab != self.tab then
+      self.tab = tab
+      self.chosen = 0
+      self.query = ""
+    end
+  end
+
+  -- Order by `by`; asked again for the same, the other way round. A
+  -- name starts from A; a figure starts from the largest.
+  fn sort(by: SortBy) -> nil
+    if by == self.by then
+      self.ascending = not self.ascending
+      return
+    end
+    self.by = by
+    self.ascending = by == SortBy.Name or by == SortBy.User or by == SortBy.Pid
+  end
+
+  -- Whether `task` is one the search leaves in.
+  local fn wanted(task: Task, query: string) -> boolean
+    if query == "" then
+      return true
+    end
+    if String.contains(String.lower(task.name), query) then
+      return true
+    end
+    return tostring(task.pid) == query
+  end
+
+  -- Put `tasks` in the order asked for. What the order leaves equal is
+  -- settled by number, so that rows do not change places from one
+  -- sample to the next.
+  local fn order(tasks: table<Task>) -> nil
+    local by = self.by
+    local before = fn(a: Task, b: Task) -> boolean
+      match by
+        case SortBy.Name then
+          local an = String.lower(a.name)
+          local bn = String.lower(b.name)
+          if an != bn then
+            return an < bn
+          end
+        case SortBy.Cpu then
+          if a.cpu != b.cpu then
+            return a.cpu < b.cpu
+          end
+        case SortBy.Memory then
+          if a.memory != b.memory then
+            return a.memory < b.memory
+          end
+        case SortBy.Threads then
+          if a.threads != b.threads then
+            return a.threads < b.threads
+          end
+        case SortBy.User then
+          if a.user != b.user then
+            return a.user < b.user
+          end
+        case SortBy.Pid then nil
+      end
+      return a.pid < b.pid
+    end
+    local ascending = self.ascending
+    Table.sort(tasks, fn(a: Task, b: Task) -> boolean
+      if ascending then
+        return before(a, b)
+      end
+      return before(b, a)
+    end)
+  end
+
+  -- The apps that are open.
+  fn apps(monitor: Monitor) -> table<Task>
+    local query = String.lower(String.trim(self.query))
+    local out: table<Task> = {}
+    for task in monitor.tasks do
+      if task.kind == "a" and self.wanted(task, query) then
+        Table.insert(out, task)
+      end
+    end
+    self.order(out)
+    return out
+  end
+
+  -- Every process of the kind asked for.
+  fn processes(monitor: Monitor) -> table<Task>
+    local query = String.lower(String.trim(self.query))
+    local out: table<Task> = {}
+    for task in monitor.tasks do
+      local mine = task.uid == monitor.me
+      local kept = self.scope == "all" or (self.scope == "mine") == mine
+      if kept and self.wanted(task, query) then
+        Table.insert(out, task)
+      end
+    end
+    self.order(out)
+    return out
+  end
+
+  -- What was started with the system: its services and the window
+  -- manager, in the order they were started.
+  fn services(monitor: Monitor) -> table<Task>
+    local out: table<Task> = {}
+    for task in monitor.tasks do
+      if task.kind == "s" or task.kind == "w" then
+        Table.insert(out, task)
+      end
+    end
+    return out
+  end
+
+  -- The list the view in front is showing.
+  fn shown(monitor: Monitor) -> table<Task>
+    if self.tab == Tab.Apps then
+      return self.apps(monitor)
+    end
+    if self.tab == Tab.Processes then
+      return self.processes(monitor)
+    end
+    if self.tab == Tab.Startup then
+      return self.services(monitor)
+    end
+    local none: table<Task> = {}
+    return none
+  end
+
+  -- Choose the one `step` after the one chosen in `tasks` (before it,
+  -- for a negative step); with none chosen, the first or the last.
+  fn chooseBy(tasks: table<Task>, step: integer) -> nil
+    if #tasks == 0 then
+      return
+    end
+    local at = 0
+    for i = 1, #tasks do
+      if tasks[i].pid == self.chosen then
+        at = i
+      end
+    end
+    local next = at + step
+    if at == 0 and step < 0 then
+      next = #tasks
+    end
+    next = Math.clamp(next, 1, #tasks)
+    self.chosen = tasks[next].pid
+  end
+
+  -- Where the one chosen is in `tasks`, from 1; 0 when it is not there.
+  fn chosenAt(tasks: table<Task>) -> integer
+    if self.chosen == 0 then
+      return 0
+    end
+    for i = 1, #tasks do
+      if tasks[i].pid == self.chosen then
+        return i
+      end
+    end
+    return 0
+  end
+
+  -- `notice`, taken: it is said once.
+  fn said() -> string
+    local notice = self.notice
+    self.notice = ""
+    return notice
+  end
+end

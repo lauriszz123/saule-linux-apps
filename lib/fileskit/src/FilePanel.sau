@@ -116,7 +116,7 @@ export class PanelState
     if self.saving then
       local name = String.trim(self.name)
       if not FileOps.valid(name) then
-        self.problem = "Type a name for the file, without a slash in it."
+        self.problem = "Enter a file name that does not contain a slash."
         return nil
       end
       return Folder.join(self.folder, name)

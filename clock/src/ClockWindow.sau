@@ -1,0 +1,393 @@
+-- Clock's window: a bar that chooses between the clock, the stopwatch
+-- and the timer, and the one chosen under it.
+--
+-- The keys:
+--
+--   Ctrl+1  Ctrl+2  Ctrl+3   the clock, the stopwatch, the timer
+--   Space                    start or stop the one shown
+--   L                        a lap, on the stopwatch
+--   R                        reset
+
+from shine import Timer
+from uikit import *
+from "wmapi" import WmApp
+from ClockLook import ClockLook
+from ClockFace import ClockFace
+from Segments import Segments
+from Stopwatch import Stopwatch
+from Countdown import Countdown
+
+-- A round-ended button with a word on it.
+export class Pill extends View
+  label: string
+  fill: Color
+  onPressed: Action
+  enabled: boolean
+
+  fn init(
+    label: string,
+    fill: Color,
+    onPressed: Action,
+    enabled: boolean = true,
+    key: string? = nil
+  )
+    self.super(key ?? label)
+    self.label = label
+    self.fill = fill
+    self.onPressed = onPressed
+    self.enabled = enabled
+  end
+
+  fn body(context: BuildContext) -> View
+    local ink = ClockLook.text
+    local fill = self.fill
+    if not self.enabled then
+      ink = Color(1.0, 1.0, 1.0, 0.3)
+      fill = ClockLook.button
+    end
+    local label = Text(self.label).font(14.0).foregroundStyle(ink)
+    local face = label.centered().frame(width: 104.0, height: 36.0).background(
+      fill,
+      18.0
+    )
+    if not self.enabled then
+      return face
+    end
+    return GestureArea(child: face, onTap: self.onPressed)
+  end
+end
+
+export class ClockWindow extends View
+  -- What the window shows and counts, kept for as long as the app runs.
+  static tab: string = "clock"
+  static stopwatch: Stopwatch = Stopwatch()
+  static countdown: Countdown = Countdown(300)
+
+  fn init(key: string? = nil)
+    self.super(key)
+  end
+
+  -- It has a tick to run: see `View.ticks`.
+  fn ticks() -> boolean
+    return true
+  end
+
+  fn tick(el: Element, dt: float) -> nil
+    local bag: table = el.data.scratch
+    local now = Timer.getTime()
+
+    -- A timer that has run out says so, wherever the window is.
+    if ClockWindow.countdown.check(now) then
+      WmApp.notify("Timer", "The timer has finished.")
+      el.markNeedsBuild()
+    end
+
+    -- What moves is drawn again as it moves: a running stopwatch every
+    -- frame, the rest when the second changes.
+    local tab = ClockWindow.tab
+    if tab == "stopwatch" and ClockWindow.stopwatch.running then
+      el.markNeedsBuild()
+      return
+    end
+    local second = Os.date("%S")
+    if second != (bag.second as string?) then
+      bag.second = second
+      if tab == "clock" or ClockWindow.countdown.running then
+        el.markNeedsBuild()
+      end
+    end
+  end
+
+  fn body(context: BuildContext) -> View
+    local revision = context.state("revision", 0)
+    local refresh = fn()
+      revision.set(revision.int(0) + 1)
+    end
+    local tabs = Segments(
+      {"Clock", "Stopwatch", "Timer"},
+      {"clock", "stopwatch", "timer"},
+      ClockWindow.tab,
+      fn(name: string)
+        ClockWindow.tab = name
+        refresh()
+      end
+    )
+    local bar = tabs.centered().frame(height: 40.0).background(ClockLook.bar)
+    local line = Spacer().frame(height: 1.0).background(ClockLook.hairline)
+
+    local content: View = ClockWindow.clock()
+    if ClockWindow.tab == "stopwatch" then
+      content = ClockWindow.stopwatchPane(refresh)
+    elseif ClockWindow.tab == "timer" then
+      content = ClockWindow.timerPane(refresh)
+    end
+
+    local window = VStack(alignment: StackAlignment.Fill) do
+      show(bar)
+      show(line)
+      content.expanded()
+    end
+    local keys = fn(e: KeyEvent) -> boolean
+      local handled = ClockWindow.key(e)
+      if handled then
+        refresh()
+      end
+      return handled
+    end
+    local listening = KeyboardListener(onKeyDown: keys, child: window)
+    return Theme(data: ClockLook.theme(), child: listening)
+  end
+
+  -- The time now: on a face, in figures, and the day.
+  static fn clock() -> View
+    local hours = (Os.date("%H") as integer?) ?? 0
+    local minutes = (Os.date("%M") as integer?) ?? 0
+    local seconds = (Os.date("%S") as integer?) ?? 0
+    local time = Text(Os.date("%H:%M:%S")).font(34.0).foregroundStyle(
+      ClockLook.text
+    )
+    local today = Date.today()
+    local said = ClockLook.weekdays[today.weekday() + 1] .. ", " .. today.describe()
+    local day = Text(said).font(13.0).foregroundStyle(ClockLook.dimText)
+    return VStack(alignment: StackAlignment.Center, spacing: 6.0) do
+      ClockFace(hours, minutes, seconds).padding(18.0).expanded()
+      show(time)
+      show(day)
+      Spacer().frame(height: 18.0)
+    end
+  end
+
+  static fn stopwatchPane(refresh: Action) -> View
+    local stopwatch = ClockWindow.stopwatch
+    local now = Timer.getTime()
+    local elapsed = stopwatch.elapsed(now)
+    local time = Text(Stopwatch.said(elapsed)).font(46.0).foregroundStyle(
+      ClockLook.text
+    )
+
+    local second = Pill("Reset", ClockLook.button, fn()
+      stopwatch.reset()
+      refresh()
+    end, enabled: elapsed > 0.0)
+    local first = Pill("Start", ClockLook.go, fn()
+      stopwatch.start(Timer.getTime())
+      refresh()
+    end)
+    if stopwatch.running then
+      second = Pill("Lap", ClockLook.button, fn()
+        stopwatch.lap(Timer.getTime())
+        refresh()
+      end)
+      first = Pill("Stop", ClockLook.stop, fn()
+        stopwatch.stop(Timer.getTime())
+        refresh()
+      end)
+    end
+    local buttons = HStack(
+      alignment: StackAlignment.Center,
+      sizing: StackSize.Fit,
+      spacing: 16.0
+    ) do
+      show(second)
+      show(first)
+    end
+
+    -- The laps, the latest first.
+    local rows: table<View> = {}
+    for i = #stopwatch.laps, 1, -1 do
+      local name = Text("Lap " .. i).font(13.0).foregroundStyle(
+        ClockLook.dimText
+      )
+      local took = Text(Stopwatch.said(stopwatch.lapTime(i))).font(13.0)
+      local fill: Color? = nil
+      if i % 2 == 0 then
+        fill = ClockLook.stripe
+      end
+      Table.insert(rows, HStack(alignment: StackAlignment.Center) do
+        show(name)
+        Spacer()
+        took.foregroundStyle(ClockLook.text)
+      end.padding(insets: EdgeInsets.symmetric(horizontal: 12.0, vertical: 5.0)).background(
+        fill,
+        5.0
+      ))
+    end
+    local laps = ScrollView(
+      child: VStack(alignment: StackAlignment.Fill, children: rows).padding(
+        insets: EdgeInsets.symmetric(horizontal: 20.0)
+      )
+    )
+
+    return VStack(alignment: StackAlignment.Fill, spacing: 14.0) do
+      Spacer().frame(height: 18.0)
+      time.centered()
+      buttons.centered()
+      laps.expanded()
+    end
+  end
+
+  static fn timerPane(refresh: Action) -> View
+    local countdown = ClockWindow.countdown
+    local now = Timer.getTime()
+    local left = countdown.remaining(now)
+    local ink = ClockLook.text
+    if countdown.finished then
+      ink = ClockLook.accent
+    end
+    local time = Text(Countdown.said(left)).font(46.0).foregroundStyle(ink)
+
+    -- Set, while it has not been started: lengths to choose from, and
+    -- a minute more or less.
+    local setting: View = Spacer().frame(height: 30.0)
+    if not countdown.begun() then
+      local lengths: table<integer> = {1, 5, 10, 15, 30, 60}
+      local choices: table<View> = {}
+      for minutes in lengths do
+        local said = minutes .. " min"
+        if minutes == 60 then
+          said = "1 hr"
+        end
+        local on = countdown.length == minutes * 60
+        local fill = ClockLook.button
+        if on then
+          fill = ClockLook.buttonOn
+        end
+        local label = Text(said).font(12.0).foregroundStyle(ClockLook.text)
+        local inset = EdgeInsets.symmetric(horizontal: 7.0, vertical: 5.0)
+        Table.insert(
+          choices,
+          GestureArea(
+            child: label.padding(insets: inset).background(fill, 6.0),
+            onTap: fn()
+              countdown.set(minutes * 60)
+              refresh()
+            end,
+            key: said
+          )
+        )
+      end
+      local step = fn(by: integer) -> View
+        local sign = "+ 1 min"
+        if by < 0 then
+          sign = "− 1 min"
+        end
+        local label = Text(sign).font(12.0).foregroundStyle(ClockLook.text)
+        local inset = EdgeInsets.symmetric(horizontal: 9.0, vertical: 5.0)
+        return GestureArea(
+          child: label.padding(insets: inset).background(ClockLook.button, 6.0),
+          onTap: fn()
+            countdown.set(Math.max(countdown.length + by, 60))
+            refresh()
+          end,
+          key: sign
+        )
+      end
+      setting = VStack(
+        alignment: StackAlignment.Center,
+        sizing: StackSize.Fit,
+        spacing: 10.0
+      ) do
+        FlowStack(children: choices, spacing: 5.0, runSpacing: 6.0)
+        HStack(
+          alignment: StackAlignment.Center,
+          sizing: StackSize.Fit,
+          spacing: 6.0
+        ) do
+          show(step(-60))
+          show(step(60))
+        end
+      end
+    elseif countdown.finished then
+      setting = Text("The timer has finished.").font(13.0).foregroundStyle(
+        ClockLook.dimText
+      )
+    end
+
+    local second = Pill("Reset", ClockLook.button, fn()
+      countdown.reset()
+      refresh()
+    end, enabled: countdown.begun())
+    local first = Pill("Start", ClockLook.go, fn()
+      countdown.start(Timer.getTime())
+      refresh()
+    end, enabled: left > 0.0)
+    if countdown.running then
+      first = Pill("Pause", ClockLook.stop, fn()
+        countdown.pause(Timer.getTime())
+        refresh()
+      end)
+    elseif countdown.begun() and not countdown.finished then
+      first = Pill("Resume", ClockLook.go, fn()
+        countdown.start(Timer.getTime())
+        refresh()
+      end)
+    end
+    local buttons = HStack(
+      alignment: StackAlignment.Center,
+      sizing: StackSize.Fit,
+      spacing: 16.0
+    ) do
+      show(second)
+      show(first)
+    end
+
+    return VStack(alignment: StackAlignment.Center, spacing: 16.0) do
+      Spacer()
+      show(time)
+      show(setting)
+      show(buttons)
+      Spacer()
+    end
+  end
+
+  -- One key. True when it was the window's.
+  static fn key(e: KeyEvent) -> boolean
+    local key = e.key
+    local now = Timer.getTime()
+    if e.command() then
+      match key
+        case "1" then
+          ClockWindow.tab = "clock"
+        case "2" then
+          ClockWindow.tab = "stopwatch"
+        case "3" then
+          ClockWindow.tab = "timer"
+        case _ then
+          return false
+      end
+      return true
+    end
+    local stopwatch = ClockWindow.stopwatch
+    local countdown = ClockWindow.countdown
+    if ClockWindow.tab == "stopwatch" then
+      match key
+        case "space" then
+          if stopwatch.running then
+            stopwatch.stop(now)
+          else
+            stopwatch.start(now)
+          end
+        case "l" then stopwatch.lap(now)
+        case "r" then stopwatch.reset()
+        case _ then
+          return false
+      end
+      return true
+    end
+    if ClockWindow.tab == "timer" then
+      match key
+        case "space" then
+          if countdown.running then
+            countdown.pause(now)
+          else
+            countdown.start(now)
+          end
+        case "r" then countdown.reset()
+        case _ then
+          return false
+      end
+      return true
+    end
+    return false
+  end
+end

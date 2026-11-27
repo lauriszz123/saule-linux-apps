@@ -13,7 +13,7 @@ export class AboutApp extends App
   fn init()
     self.super()
     self.watch = SystemWatch()
-    WmApp.describe("About This System", Project.version, "What this computer is.")
+    WmApp.describe("About This System", Project.version, "Information about this computer.")
   end
 
   fn body() -> Scene

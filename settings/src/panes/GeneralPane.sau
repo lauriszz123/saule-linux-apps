@@ -62,12 +62,12 @@ export class GeneralPane extends View
       if editing.int(0) == 1 and kept == "" then
         Table.insert(
           items,
-          Said.note("A name needs a letter or a digit in it.", warning: true)
+          Said.note("The name must contain a letter or a digit.", warning: true)
         )
       elseif editing.int(0) == 1 and kept != machine.name then
         Table.insert(
           items,
-          Said.note("Press Enter to name this computer " .. kept .. ".")
+          Said.note("Press Enter to rename this computer to " .. kept .. ".")
         )
       end
     end

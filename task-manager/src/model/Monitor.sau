@@ -1,0 +1,238 @@
+-- What is running and how hard the computer is working: the last sample
+-- `saule-tasks` printed, and how the three shares have gone over the
+-- last two minutes.
+--
+-- `saule-tasks watch` is started once and prints a sample every other
+-- second. `poll` takes what it has printed, without waiting for more,
+-- and keeps the last whole sample; the window calls it from its tick.
+
+from Task import Task
+from log import Logger
+
+export class Monitor
+  static local log: Logger = Logger("task-manager")
+
+  -- The program asked, unless `SAULE_TASKS` names another.
+  static program: string = "/bin/saule-tasks"
+  -- Seconds between samples, and how many the graphs keep.
+  static every: integer = 2
+  static kept: integer = 60
+
+  -- Whether there is such a program here to ask; false on another
+  -- system, where the window says there is nothing to show.
+  available: boolean
+  -- Whether a first sample has come.
+  ready: boolean
+
+  -- The account the app runs as: whose processes it may end.
+  me: integer
+
+  -- The processors together: busy, in programs and in the kernel, in
+  -- percent; how many there are; the load over the last minute.
+  busy: float
+  inPrograms: float
+  inKernel: float
+  cores: integer
+  load: string
+  -- Each processor's busy share.
+  perCore: table<float>
+
+  -- Memory, in kB.
+  memory: integer
+  memoryUsed: integer
+  memoryCached: integer
+  memoryAvailable: integer
+  swap: integer
+  swapUsed: integer
+
+  -- The graphics chip: busy in percent and its own memory in kB; -1
+  -- for what it does not say.
+  graphics: float
+  graphicsMemory: integer
+  graphicsMemoryUsed: integer
+
+  tasks: table<Task>
+
+  -- How the shares have gone, oldest first, each 0 to 1.
+  busyBefore: table<float>
+  memoryBefore: table<float>
+  graphicsBefore: table<float>
+
+  local watch: Process?
+  local unread: string
+
+  fn init()
+    self.available = false
+    self.ready = false
+    self.me = -1
+    self.busy = 0.0
+    self.inPrograms = 0.0
+    self.inKernel = 0.0
+    self.cores = 1
+    self.load = ""
+    self.perCore = {}
+    self.memory = 0
+    self.memoryUsed = 0
+    self.memoryCached = 0
+    self.memoryAvailable = 0
+    self.swap = 0
+    self.swapUsed = 0
+    self.graphics = -1.0
+    self.graphicsMemory = -1
+    self.graphicsMemoryUsed = -1
+    self.tasks = {}
+    self.busyBefore = {}
+    self.memoryBefore = {}
+    self.graphicsBefore = {}
+    self.watch = nil
+    self.unread = ""
+  end
+
+  static fn helper() -> string
+    return Os.getenv("SAULE_TASKS") ?? Monitor.program
+  end
+
+  -- Start asking. Nothing happens where there is nobody to ask.
+  fn start() -> nil
+    local program = Monitor.helper()
+    if not Os.exists(program) then
+      Monitor.log.warn("no saule-tasks here", {program: program})
+      return
+    end
+    self.watch = Os.spawn(program, {"watch", tostring(Monitor.every)})
+    self.available = self.watch != nil
+  end
+
+  fn stop() -> nil
+    local watch = self.watch
+    if watch != nil then
+      watch!.kill()
+      self.watch = nil
+    end
+  end
+
+  -- Take what has been printed since the last look. True when there is
+  -- a new sample to show.
+  fn poll() -> boolean
+    local watch = self.watch
+    if watch == nil then
+      return false
+    end
+    self.unread ..= Bytes.toString(watch!.read()) ?? ""
+    -- The last whole sample: one that ends in "end". Older ones the
+    -- window was too busy to look at are passed over.
+    local samples = String.split(self.unread, "end\n")
+    if #samples < 2 then
+      return false
+    end
+    self.unread = samples[#samples]
+    self.take(samples[#samples - 1])
+    return true
+  end
+
+  -- Read one sample: a line a thing, its fields set apart by tabs.
+  local fn take(sample: string) -> nil
+    local tasks: table<Task> = {}
+    local perCore: table<float> = {}
+    for line in String.split(sample, "\n") do
+      local f = String.split(line, "\t")
+      local what = f[1] ?? ""
+      if what == "p" and #f >= 11 then
+        Table.insert(tasks, Task(
+          Monitor.whole(f[2]),
+          Monitor.whole(f[3]),
+          Monitor.whole(f[4]),
+          f[5],
+          f[6],
+          (Monitor.whole(f[7]) as float) / 10.0,
+          Monitor.whole(f[8]),
+          Monitor.whole(f[9]),
+          f[11],
+          f[12] ?? ""
+        ))
+      elseif what == "me" and #f >= 2 then
+        self.me = Monitor.whole(f[2])
+      elseif what == "cpu" and #f >= 6 then
+        self.busy = (Monitor.whole(f[2]) as float) / 10.0
+        self.inPrograms = (Monitor.whole(f[3]) as float) / 10.0
+        self.inKernel = (Monitor.whole(f[4]) as float) / 10.0
+        self.cores = Math.max(Monitor.whole(f[5]), 1)
+        self.load = f[6]
+      elseif what == "core" and #f >= 3 then
+        Table.insert(perCore, (Monitor.whole(f[3]) as float) / 10.0)
+      elseif what == "mem" and #f >= 7 then
+        self.memory = Monitor.whole(f[2])
+        self.memoryUsed = Monitor.whole(f[3])
+        self.memoryCached = Monitor.whole(f[4])
+        self.memoryAvailable = Monitor.whole(f[5])
+        self.swap = Monitor.whole(f[6])
+        self.swapUsed = Monitor.whole(f[7])
+      elseif what == "gpu" and #f >= 4 then
+        self.graphics = Monitor.whole(f[2]) as float
+        self.graphicsMemoryUsed = Monitor.whole(f[3])
+        self.graphicsMemory = Monitor.whole(f[4])
+      end
+    end
+    self.tasks = tasks
+    self.perCore = perCore
+    self.ready = true
+
+    Monitor.keep(self.busyBefore, self.busy / 100.0)
+    local held = 0.0
+    if self.memory > 0 then
+      held = (self.memoryUsed as float) / (self.memory as float)
+    end
+    Monitor.keep(self.memoryBefore, held)
+    if self.graphics >= 0.0 then
+      Monitor.keep(self.graphicsBefore, self.graphics / 100.0)
+    end
+  end
+
+  -- Add `share` to the end of `history`, letting go of the oldest when
+  -- there are more than are kept.
+  static local fn keep(history: table<float>, share: float) -> nil
+    Table.insert(history, Math.clamp(share, 0.0, 1.0))
+    while #history > Monitor.kept do
+      Table.remove(history, 1)
+    end
+  end
+
+  -- A whole number out of a field; 0 for what is not one.
+  static fn whole(text: string?) -> integer
+    return ((text ?? "") as integer?) ?? 0
+  end
+
+  -- The process numbered `pid`, if it is still there.
+  fn task(pid: integer) -> Task?
+    for task in self.tasks do
+      if task.pid == pid then
+        return task
+      end
+    end
+    return nil
+  end
+
+  -- Whether the app may end `task`: it is the same account's.
+  fn mayEnd(task: Task) -> boolean
+    return self.me >= 0 and task.uid == self.me
+  end
+
+  -- End the process numbered `pid`: asked to (it may save and tidy up),
+  -- or with `force` ended outright. "" when it was done, else why not.
+  fn quit(pid: integer, force: boolean) -> string
+    local how = "quit"
+    if force then
+      how = "kill"
+    end
+    local code, out, err = Os.capture(Monitor.helper() .. " " .. how .. " " .. pid)
+    if code == 0 then
+      Monitor.log.info("ended", {pid: pid, force: force})
+      return ""
+    end
+    local why = String.trim(err)
+    if why == "" then
+      why = "The process could not be ended."
+    end
+    return why
+  end
+end

@@ -1,0 +1,331 @@
+-- Task Manager's window: the bar, the view it has chosen, and a line
+-- along the foot; over them the question asked before something is
+-- ended.
+--
+-- The keys:
+--
+--   Ctrl+1 … Ctrl+4        the overview, apps, processes, startup
+--   arrows                 the one chosen: the next, the one before
+--   Ctrl+Backspace, Delete quit the one chosen (asked first)
+--   Ctrl+F                 search
+--   Escape                 leave the search; choose nothing
+
+import shine
+from uikit import *
+from model import Listing, Monitor, Tab, Task
+from Look import Look
+from Said import Said
+from TaskBar import TaskBar
+from OverviewPane import OverviewPane
+from TaskList import TaskList
+from QuitSheet import QuitSheet
+
+export class TaskWindow extends View
+  monitor: Monitor
+  listing: Listing
+
+  -- How long something that went wrong stays said, in seconds.
+  static noticeTime: float = 6.0
+  static local notice: string = ""
+  static local noticeAt: float = 0.0
+
+  fn init(monitor: Monitor, listing: Listing, key: string? = nil)
+    self.super(key)
+    self.monitor = monitor
+    self.listing = listing
+  end
+
+  -- It has a tick to run: see `View.ticks`.
+  fn ticks() -> boolean
+    return true
+  end
+
+  fn tick(el: Element, dt: float) -> nil
+    local bag: table = el.data.scratch
+    -- A new sample is a new window.
+    if self.monitor.poll() then
+      el.markNeedsBuild()
+    end
+
+    -- How wide the lists are shown, which says what there is room for:
+    -- the window can be tiled into a strip of the screen at any moment.
+    local narrow = el.size.width > 0.0 and el.size.width < Look.narrowBelow
+    if el.size.width != self.listing.width or narrow != ((bag.narrow as boolean?) ?? false) then
+      self.listing.width = el.size.width
+      bag.narrow = narrow
+      el.markNeedsBuild()
+    end
+
+    if TaskWindow.notice != "" and Os.clock() - TaskWindow.noticeAt > TaskWindow.noticeTime then
+      TaskWindow.notice = ""
+      el.markNeedsBuild()
+    end
+  end
+
+  -- The app is closing: the program it was asking goes with it.
+  fn unmounted(el: Element) -> nil
+    self.monitor.stop()
+  end
+
+  fn body(context: BuildContext) -> View
+    local monitor = self.monitor
+    local listing = self.listing
+    local revision = context.state("revision", 0)
+    local refresh = fn()
+      revision.set(revision.int(0) + 1)
+    end
+    local narrow = (context.data().scratch.narrow as boolean?) ?? false
+
+    local said = listing.said()
+    if said != "" then
+      TaskWindow.notice = said
+      TaskWindow.noticeAt = Os.clock()
+    end
+
+    local tasks = listing.shown(monitor)
+    -- The one chosen has ended, or is no longer listed.
+    if listing.chosen != 0 and listing.chosenAt(tasks) == 0 then
+      listing.chosen = 0
+    end
+
+    local content = TaskWindow.content(monitor, listing, tasks, narrow, refresh)
+    -- A press on the list's own space chooses nothing.
+    local space = GestureArea(child: content, onTapDown: fn()
+      if listing.chosen != 0 then
+        listing.chosen = 0
+        refresh()
+      end
+    end)
+
+    local line = Spacer().frame(height: 1.0).background(Look.hairline)
+    local window = VStack(alignment: StackAlignment.Fill) do
+      TaskBar(monitor, listing, narrow, refresh)
+      show(line)
+      space.expanded()
+      TaskWindow.foot(monitor, listing, tasks)
+    end
+
+    local layers: table<View> = {window}
+    local asked = monitor.task(listing.asking)
+    if listing.asking != 0 and asked == nil then
+      listing.asking = 0
+    end
+    if asked != nil then
+      Table.insert(layers, TaskWindow.question(monitor, listing, asked!, refresh))
+    end
+
+    local keys = fn(e: KeyEvent) -> boolean
+      local handled = TaskWindow.key(monitor, listing, tasks, e)
+      if handled then
+        refresh()
+      end
+      return handled
+    end
+    local all = ZStack(children: layers)
+    local listening = KeyboardListener(onKeyDown: keys, child: all)
+    return Theme(data: Look.theme(), child: listening)
+  end
+
+  -- The view chosen, or why there is nothing to show.
+  static fn content(
+    monitor: Monitor,
+    listing: Listing,
+    tasks: table<Task>,
+    narrow: boolean,
+    refresh: Action
+  ) -> View
+    if not monitor.available then
+      return TaskWindow.message(
+        "Task Manager is not available on this system.",
+        "It shows what is running on Saule Linux."
+      )
+    end
+    if not monitor.ready then
+      return TaskWindow.message("Loading…", "")
+    end
+    if listing.tab == Tab.Overview then
+      return OverviewPane(monitor, narrow, key: "overview")
+    end
+    if listing.tab == Tab.Apps then
+      return TaskList(
+        listing,
+        tasks,
+        TaskList.forApps(),
+        true,
+        refresh,
+        "No apps are open.",
+        key: "apps"
+      )
+    end
+    if listing.tab == Tab.Processes then
+      return TaskList(
+        listing,
+        tasks,
+        TaskList.forProcesses(),
+        true,
+        refresh,
+        "No matching processes.",
+        key: "processes"
+      )
+    end
+    return TaskList(
+      listing,
+      tasks,
+      TaskList.forServices(),
+      false,
+      refresh,
+      "No services are running.",
+      key: "startup"
+    )
+  end
+
+  static fn message(title: string, detail: string) -> View
+    local said = Text(title).font(14.0).foregroundStyle(Look.text)
+    local more = Text(detail).font(12.0).foregroundStyle(Look.dimText)
+    local column = VStack(
+      alignment: StackAlignment.Center,
+      sizing: StackSize.Fit,
+      spacing: 6.0
+    ) do
+      show(said)
+      if detail != "" then
+        show(more)
+      end
+    end
+    return column.centered()
+  end
+
+  -- Along the foot: how much there is of what is listed, and at the
+  -- right how busy the computer is; or what went wrong a moment ago.
+  static fn foot(monitor: Monitor, listing: Listing, tasks: table<Task>) -> View
+    local left = ""
+    if TaskWindow.notice != "" then
+      left = TaskWindow.notice
+    elseif listing.tab == Tab.Apps then
+      left = Said.count(#tasks, "app", "apps")
+    elseif listing.tab == Tab.Processes then
+      local threads = 0
+      for task in tasks do
+        threads = threads + task.threads
+      end
+      left = Said.count(#tasks, "process", "processes") .. ", " .. Said.count(
+        threads,
+        "thread",
+        "threads"
+      )
+    elseif listing.tab == Tab.Startup then
+      left = Said.count(#tasks, "service", "services")
+    end
+    local ink = Look.dimText
+    if TaskWindow.notice != "" then
+      ink = Look.warning
+    end
+    local right = ""
+    if monitor.ready then
+      right = "CPU " .. Said.percent(monitor.busy) .. "   Memory " .. Said.memory(
+        monitor.memoryUsed
+      )
+    end
+    local row = HStack(alignment: StackAlignment.Center, spacing: 8.0) do
+      Text(left).font(11.0).foregroundStyle(ink).lineLimit(1).expanded()
+      Text(right).font(11.0).foregroundStyle(Look.dimText).lineLimit(1)
+    end
+    local inset = EdgeInsets.symmetric(horizontal: 10.0)
+    return row.padding(insets: inset).frame(height: Look.footHeight).background(
+      Look.bar
+    )
+  end
+
+  -- The question before `task` is ended.
+  static fn question(
+    monitor: Monitor,
+    listing: Listing,
+    task: Task,
+    refresh: Action
+  ) -> View
+    local name = task.name
+    if task.kind == "a" then
+      name = task.title()
+    end
+    local finish = fn(force: boolean)
+      listing.notice = monitor.quit(task.pid, force)
+      listing.asking = 0
+      listing.chosen = 0
+      refresh()
+    end
+    return QuitSheet(
+      name,
+      fn()
+        finish(false)
+      end,
+      fn()
+        finish(true)
+      end,
+      fn()
+        listing.asking = 0
+        refresh()
+      end
+    )
+  end
+
+  -- One key. True when it was the window's.
+  static fn key(
+    monitor: Monitor,
+    listing: Listing,
+    tasks: table<Task>,
+    e: KeyEvent
+  ) -> boolean
+    local key = e.key
+    if listing.asking != 0 then
+      return false
+    end
+    -- In the search field, typing is searching; Escape gives the list
+    -- the keyboard back.
+    if TaskBar.node.hasFocus() then
+      if key == "escape" then
+        listing.query = ""
+        TaskBar.node.unfocus()
+        return true
+      end
+      if not e.command() then
+        return false
+      end
+    end
+
+    if e.command() then
+      match key
+        case "1" then listing.show(Tab.Overview)
+        case "2" then listing.show(Tab.Apps)
+        case "3" then listing.show(Tab.Processes)
+        case "4" then listing.show(Tab.Startup)
+        case "f" then TaskBar.node.requestFocus()
+        case "backspace" then TaskWindow.ask(monitor, listing)
+        case _ then
+          return false
+      end
+      return true
+    end
+
+    if e.alt then
+      return false
+    end
+    match key
+      case "up" then listing.chooseBy(tasks, -1)
+      case "down" then listing.chooseBy(tasks, 1)
+      case "delete" then TaskWindow.ask(monitor, listing)
+      case "escape" then
+        listing.chosen = 0
+      case _ then
+        return false
+    end
+    return true
+  end
+
+  -- Ask about ending the one chosen, if it is the person's to end.
+  static fn ask(monitor: Monitor, listing: Listing) -> nil
+    local chosen = monitor.task(listing.chosen)
+    if chosen != nil and monitor.mayEnd(chosen!) then
+      listing.asking = listing.chosen
+    end
+  end
+end

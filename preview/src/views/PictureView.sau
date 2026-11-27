@@ -1,0 +1,180 @@
+-- A picture, or a page of a PDF, on the desk: as large as fits or as
+-- large as asked, moved about by dragging it or turning the wheel.
+
+from shine import Graphics, Keyboard
+from uikit import *
+from model import Picture, Viewing
+from Look import Look
+
+-- The drawing itself: it fills what it is given, and says back to
+-- `viewing` what fitted and how far there is to move.
+export class PictureCanvas extends View
+  picture: Picture
+  viewing: Viewing
+  -- For a page: how wide it is drawn, in points. 0 for a picture, which
+  -- goes by `viewing.zoom`.
+  pageWidth: float
+
+  fn init(
+    picture: Picture,
+    viewing: Viewing,
+    pageWidth: float = 0.0,
+    key: string? = nil
+  )
+    self.super(key)
+    self.picture = picture
+    self.viewing = viewing
+    self.pageWidth = pageWidth
+  end
+
+  fn layout(el: Element, constraints: Constraints) -> Size
+    return constraints.biggest()
+  end
+
+  fn paint(el: Element, x: float, y: float) -> nil
+    local picture = self.picture
+    local viewing = self.viewing
+    local width = el.size.width
+    local height = el.size.height
+    local margin = Look.margin
+    Look.desk.apply()
+    Graphics.rectangle("fill", x, y, width, height)
+    if picture.width <= 0 or picture.height <= 0 then
+      return
+    end
+    local across = picture.width as float
+    local down = picture.height as float
+
+    -- How many points each of its pixels is drawn across.
+    local each = 1.0
+    if self.pageWidth > 0.0 then
+      each = self.pageWidth / across
+    else
+      -- A pixel of the picture for a pixel of the screen is 1.0; fitted
+      -- is that or less.
+      local density = Display.scale()
+      local roomAcross = Math.max(width - margin * 2.0, 16.0) * density
+      local roomDown = Math.max(height - margin * 2.0, 16.0) * density
+      viewing.fitted = Math.min(
+        1.0,
+        Math.min(roomAcross / across, roomDown / down)
+      )
+      each = viewing.scale() / density
+    end
+    local drawnAcross = across * each
+    local drawnDown = down * each
+
+    -- In the middle when it fits; else moved by as much as was asked,
+    -- and no farther than its edges.
+    viewing.farthestX = Math.max(drawnAcross + margin * 2.0 - width, 0.0)
+    viewing.farthestY = Math.max(drawnDown + margin * 2.0 - height, 0.0)
+    if viewing.recentre and self.pageWidth <= 0.0 then
+      -- Made larger or smaller: what was in the middle stays there.
+      viewing.x = viewing.midX * drawnAcross + margin - width / 2.0
+      viewing.y = viewing.midY * drawnDown + margin - height / 2.0
+    end
+    viewing.recentre = false
+    viewing.x = Math.clamp(viewing.x, 0.0, viewing.farthestX)
+    viewing.y = Math.clamp(viewing.y, 0.0, viewing.farthestY)
+    local left = x + margin - viewing.x
+    if viewing.farthestX <= 0.0 then
+      left = x + (width - drawnAcross) / 2.0
+    end
+    local top = y + margin - viewing.y
+    if viewing.farthestY <= 0.0 and self.pageWidth <= 0.0 then
+      top = y + (height - drawnDown) / 2.0
+    end
+    -- What part of it is in the middle of the window now.
+    viewing.midX = Math.clamp((x + width / 2.0 - left) / drawnAcross, 0.0, 1.0)
+    viewing.midY = Math.clamp((y + height / 2.0 - top) / drawnDown, 0.0, 1.0)
+    -- On whole pixels, so that a pixel of the picture is one of the
+    -- screen's and not smeared over two.
+    local density = Display.scale()
+    left = (Math.floor(left * density + 0.5) as float) / density
+    top = (Math.floor(top * density + 0.5) as float) / density
+
+    local sx: float, sy: float, sw: float, sh: float = Graphics.getScissor()
+    Graphics.intersectScissor(x, y, width, height)
+    picture.draw(left, top, each)
+    Graphics.setScissor(sx, sy, sw, sh)
+  end
+end
+
+export class PictureView extends View
+  picture: Picture
+  viewing: Viewing
+  pageWidth: float
+  -- The wheel turned at the end of a page: -1 to go back one, 1 on.
+  onTurn: ValueChanged<integer>?
+  refresh: Action
+
+  fn init(
+    picture: Picture,
+    viewing: Viewing,
+    refresh: Action,
+    pageWidth: float = 0.0,
+    onTurn: ValueChanged<integer>? = nil,
+    key: string? = nil
+  )
+    self.super(key)
+    self.picture = picture
+    self.viewing = viewing
+    self.refresh = refresh
+    self.pageWidth = pageWidth
+    self.onTurn = onTurn
+  end
+
+  fn body(context: BuildContext) -> View
+    local viewing = self.viewing
+    local refresh = self.refresh
+    local onTurn = self.onTurn
+    local paged = self.pageWidth > 0.0
+    local canvas = PictureCanvas(self.picture, viewing, self.pageWidth)
+    return GestureArea(child: canvas, onTapDown: fn()
+      viewing.dragging = false
+    end, onDragTo: fn(x: float, y: float)
+      -- The first step of a drag has nothing to be measured from.
+      if viewing.dragging then
+        viewing.moveBy(viewing.dragX - x, viewing.dragY - y)
+        Repaint.request()
+      end
+      viewing.dragging = true
+      viewing.dragX = x
+      viewing.dragY = y
+    end, onScroll: fn(dx: float, dy: float) -> boolean
+      -- With Ctrl held the wheel makes a picture larger or smaller.
+      if not paged and Keyboard.isAnyDown({"lctrl", "rctrl"}) then
+        if dy > 0.0 then
+          viewing.zoomBy(1.1)
+        elseif dy < 0.0 then
+          viewing.zoomBy(1.0 / 1.1)
+        end
+        refresh()
+        return true
+      end
+      local moved = viewing.moveBy(-dx * 60.0, -dy * 60.0)
+      if moved then
+        Repaint.request()
+      elseif onTurn != nil and dy != 0.0 then
+        -- At the end of a page the wheel turns to the next.
+        if dy < 0.0 then
+          onTurn!(1)
+        else
+          onTurn!(-1)
+        end
+      end
+      return true
+    end, onDoubleTapAt: fn(x: float, y: float)
+      -- Fitted, or a pixel for a pixel.
+      if paged then
+        return
+      end
+      if viewing.zoom == 0.0 then
+        viewing.zoom = 1.0
+      else
+        viewing.zoom = 0.0
+      end
+      refresh()
+    end)
+  end
+end

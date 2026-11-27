@@ -1,0 +1,20 @@
+--[[
+Clock: the time and the date, a stopwatch, and a timer.
+
+  saule run .
+
+    Stopwatch, Countdown   what each of them counts, without the window
+    ClockWindow            the three views and the bar that chooses one
+    ClockFace              the time as a clock's face shows it
+
+A timer that runs out says so with a notification, through the window
+manager, whether or not the window is in front.
+]]
+
+from ClockApp import ClockApp
+
+class Main
+  static fn main()
+    ClockApp().run()
+  end
+end

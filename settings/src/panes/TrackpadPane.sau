@@ -78,7 +78,7 @@ export class TrackpadPane extends View
         Row("Tap and drag", drag),
       }),
       Said.note(
-        "A tap with one finger clicks, with two is the secondary click, and with three the middle one. Pressing the pad with two fingers on it is the secondary click too. With tap and drag, a tap and then a touch drags what was tapped until the finger lifts."
+        "Tap with one finger to click, two fingers for a secondary click, or three fingers for a middle click. Pressing the trackpad with two fingers also performs a secondary click. With tap and drag, tap an item and then touch again to drag it until the finger is lifted."
       ),
       Group("Scroll", {
         Row("Scroll speed", scroll),
@@ -86,7 +86,7 @@ export class TrackpadPane extends View
         Row("Inertia", inertia),
       }),
       Said.note(
-        "Two fingers scroll. With natural scrolling, what is scrolled moves the way the fingers do. With inertia, a scroll let go of while moving carries on and slows down; a touch or a key stops it."
+        "Scroll with two fingers. Natural scrolling moves content in the direction of finger movement. Inertia continues scrolling briefly after the fingers are lifted."
       ),
     }
     local devices = Said.devices(settings.machine, "touchpad", "trackpad")

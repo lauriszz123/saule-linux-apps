@@ -1,0 +1,93 @@
+-- How what is shown is zoomed and where it has been moved to: the
+-- window's, kept through its rebuilds.
+
+export class Viewing
+  -- How large a picture is drawn: its pixels to the screen's, 1.0 a
+  -- pixel for a pixel; 0 for "as large as fits, and no larger than it
+  -- is". For a page, how wide it is drawn against the window's width.
+  zoom: float
+  -- What a picture that fits is drawn at, as last worked out: where
+  -- zooming in or out starts from.
+  fitted: float
+
+  -- How far what is shown has been moved, in points, from its left and
+  -- its top; and how far it can be (set as it is drawn).
+  x: float
+  y: float
+  farthestX: float
+  farthestY: float
+
+  -- What part of a picture is in the middle of the window, across and
+  -- down, from 0 at one edge to 1 at the other (set as it is drawn);
+  -- and whether the next drawing is to put that part there again:
+  -- after it was made larger or smaller, so that it grows from the
+  -- middle of what is seen and not from its corner.
+  midX: float
+  midY: float
+  recentre: boolean
+
+  -- Where the pointer was at the last step of a drag, and whether one
+  -- is going on.
+  dragging: boolean
+  dragX: float
+  dragY: float
+
+  static smallest: float = 0.1
+  static largest: float = 8.0
+
+  fn init()
+    self.zoom = 0.0
+    self.fitted = 1.0
+    self.x = 0.0
+    self.y = 0.0
+    self.farthestX = 0.0
+    self.farthestY = 0.0
+    self.midX = 0.5
+    self.midY = 0.5
+    self.recentre = false
+    self.dragging = false
+    self.dragX = 0.0
+    self.dragY = 0.0
+  end
+
+  -- As it is for something just opened: fitted, and not moved.
+  fn reset() -> nil
+    self.zoom = 0.0
+    self.x = 0.0
+    self.y = 0.0
+    self.midX = 0.5
+    self.midY = 0.5
+    self.recentre = false
+    self.dragging = false
+  end
+
+  -- What it is drawn at now.
+  fn scale() -> float
+    if self.zoom > 0.0 then
+      return self.zoom
+    end
+    return self.fitted
+  end
+
+  -- Larger or smaller by `factor`, kept between the smallest and the
+  -- largest.
+  fn zoomBy(factor: float) -> nil
+    self.zoom = Math.clamp(
+      self.scale() * factor,
+      Viewing.smallest,
+      Viewing.largest
+    )
+    self.recentre = true
+  end
+
+  -- Move by `dx`, `dy` points, no farther than there is to see. True
+  -- when it moved.
+  fn moveBy(dx: float, dy: float) -> boolean
+    local x = Math.clamp(self.x + dx, 0.0, Math.max(self.farthestX, 0.0))
+    local y = Math.clamp(self.y + dy, 0.0, Math.max(self.farthestY, 0.0))
+    local moved = x != self.x or y != self.y
+    self.x = x
+    self.y = y
+    return moved
+  end
+end

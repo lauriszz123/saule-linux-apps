@@ -34,12 +34,12 @@ export class DateTimePane extends View
     local search = Field(query.text(""), "Search for a city", typed)
     -- The clock is set from the network by itself; when, and the way
     -- to have it asked again now.
-    local synced = "Not yet: it is asked when the computer is on a network"
+    local synced = "Not yet synchronized"
     if machine.clockSynced > 0 then
       local ago = Math.max(Os.time() - machine.clockSynced, 0)
       synced = DateTimePane.ago(ago)
     end
-    local again = RowButton("Set Now", fn()
+    local again = RowButton("Sync Now", fn()
       settings.tell(fn(wm: WmSettings)
         wm.syncClock()
       end)
@@ -48,8 +48,8 @@ export class DateTimePane extends View
     local items: table<View> = {
       PaneTitle("Date & Time"),
       Group("Clock", {
-        Row("Set from the network", Said(synced)),
-        Row("Ask a time server", again),
+        Row("Last synchronized", Said(synced)),
+        Row("Synchronize with a time server", again),
       }),
       Group("Time Zone", {Row("Time zone", Said(now)), Row("Change", search)}),
     }
@@ -74,7 +74,7 @@ export class DateTimePane extends View
       if #found == 0 then
         Table.insert(
           items,
-          Said.note("No city by that name. Try the largest one nearby.")
+          Said.note("No matching city. Try the nearest major city.")
         )
       else
         Table.insert(items, Group("Cities", found))

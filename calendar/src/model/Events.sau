@@ -1,0 +1,155 @@
+-- Every event, and the file they are kept in.
+--
+-- The file is a line an event: the date, the time or `-`, the title,
+-- with tabs between. It is read once and written whole after every
+-- change, to a file beside it that then takes its place, so that a
+-- write cut short leaves the old one.
+
+from uikit import Date
+from CalendarEvent import CalendarEvent
+
+export class Events
+  all: table<CalendarEvent>
+  -- The events of each day that has any, in the order of the day,
+  -- under the day as "2026-11-27".
+  local days: table<string, table<CalendarEvent>>
+  -- What went wrong saving, or "".
+  problem: string
+  -- Where they are kept. Another place can be given, for a test.
+  path: string
+
+  fn init(path: string? = nil)
+    self.all = {}
+    self.days = {}
+    self.problem = ""
+    self.path = path ?? Events.kept()
+    self.load()
+  end
+
+  static fn kept() -> string
+    local home = Os.getenv("HOME") ?? "."
+    local data = Os.getenv("XDG_DATA_HOME") ?? (home .. "/.local/share")
+    return data .. "/saule/calendar.tsv"
+  end
+
+  -- Sort each day's events again.
+  local fn index() -> nil
+    local days: table<string, table<CalendarEvent>> = {}
+    for event in self.all do
+      local day = event.date.toString()
+      local those = days[day]
+      if those == nil then
+        days[day] = {event}
+      else
+        Table.insert(those!, event)
+      end
+    end
+    for day, those in days do
+      Table.sort(those, (a: CalendarEvent, b: CalendarEvent) => a.before(b))
+    end
+    self.days = days
+  end
+
+  -- The events of `date`, in the order of the day.
+  fn on(date: Date) -> table<CalendarEvent>
+    return self.days[date.toString()] ?? {}
+  end
+
+  fn load() -> nil
+    self.all = {}
+    local file = Io.open(self.path, IoMode.Read)
+    if file != nil then
+      local text = file!.read("a") ?? ""
+      file!.close()
+      for line in String.split(text, "\n") do
+        local parts = String.split(line, "\t")
+        if #parts >= 3 then
+          local date = CalendarEvent.dateOf(parts[1])
+          local title = String.trim(parts[3])
+          if date != nil and title != "" then
+            local minutes = CalendarEvent.minutesOf(parts[2])
+            Table.insert(self.all, CalendarEvent(date!, minutes, title))
+          end
+        end
+      end
+    end
+    self.index()
+  end
+
+  fn save() -> nil
+    local lines: table<string> = {}
+    for event in self.all do
+      local time = "-"
+      if not event.allDay() then
+        time = CalendarEvent.clock(event.minutes)
+      end
+      Table.insert(
+        lines,
+        event.date.toString() .. "\t" .. time .. "\t" .. event.title
+      )
+    end
+    local parts = String.split(self.path, "/")
+    Table.remove(parts)
+    Os.mkdir(String.join("/", parts), true)
+    local beside = self.path .. ".new"
+    local file = Io.open(beside, IoMode.Write)
+    if file == nil then
+      self.problem = "Events could not be saved."
+      return
+    end
+    file!.write(String.join("\n", lines) .. "\n")
+    file!.close()
+    if Os.rename(beside, self.path) then
+      self.problem = ""
+    else
+      self.problem = "Events could not be saved."
+    end
+  end
+
+  -- A title as it is kept: on one line, with no tabs, and no longer
+  -- than a title is.
+  static fn tidy(title: string) -> string
+    local one = String.replace(String.replace(title, "\t", " "), "\n", " ")
+    one = String.trim(one)
+    if String.len(one) > 120 then
+      one = String.sub(one, 1, 120)
+    end
+    return one
+  end
+
+  fn add(date: Date, minutes: integer, title: string) -> CalendarEvent?
+    local tidy = Events.tidy(title)
+    if tidy == "" then
+      return nil
+    end
+    local event = CalendarEvent(date, minutes, tidy)
+    Table.insert(self.all, event)
+    self.index()
+    self.save()
+    return event
+  end
+
+  -- Change `event` to what is given.
+  fn change(event: CalendarEvent, date: Date, minutes: integer, title: string) -> nil
+    local tidy = Events.tidy(title)
+    if tidy == "" then
+      return
+    end
+    event.date = date
+    event.minutes = minutes
+    event.title = tidy
+    self.index()
+    self.save()
+  end
+
+  fn remove(event: CalendarEvent) -> nil
+    for i = 1, #self.all do
+      if self.all[i] == event then
+        Table.remove(self.all, i)
+        break
+      end
+    end
+    self.index()
+    self.save()
+  end
+end

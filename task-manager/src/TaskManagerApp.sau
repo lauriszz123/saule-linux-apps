@@ -1,0 +1,34 @@
+-- Task Manager as a uikit app: one window on what is running.
+
+from uikit import *
+from "wmapi" import WmApp
+from model import Listing, Monitor
+from views import Look, TaskWindow
+
+export class TaskManagerApp extends App
+  monitor: Monitor
+  listing: Listing
+
+  fn init()
+    self.super()
+    self.monitor = Monitor()
+    self.listing = Listing()
+    self.monitor.start()
+    WmApp.describe(
+      "Task Manager",
+      Project.version,
+      "What is running, and how hard the computer is working."
+    )
+  end
+
+  fn body() -> Scene
+    return WindowGroup(
+      title: "Task Manager",
+      width: 760,
+      height: 480,
+      background: Look.window
+    ) do
+      TaskWindow(self.monitor, self.listing)
+    end
+  end
+end

@@ -1,7 +1,7 @@
 -- What this system is: Saule's version, the kernel, memory, the screen —
 -- like the Mac's About. Asked about again every second while the pane is
--- open, so what changes (the memory in use, the open windows) is shown as
--- it is now.
+-- open, so what changes (the open windows, the time up) is shown as it
+-- is now.
 
 from uikit import *
 from "wmapi" import SystemInfo, WmSettings
@@ -26,7 +26,7 @@ export class AboutPane extends View
   end
 
   -- Ask again every `every` seconds, and build the pane again when what
-  -- it says changed: the memory in use, the open windows, the time up.
+  -- it says changed: the open windows, the time up.
   fn tick(el: Element, dt: float) -> nil
     local bag: table = el.data.scratch
     local waited = ((bag.waited as float?) ?? 0.0) + dt
@@ -64,12 +64,16 @@ export class AboutPane extends View
     return "Saule Linux"
   end
 
-  -- Under it, Saule's version; in a window on another system, that
-  -- system's version first.
-  static fn version(info: SystemInfo) -> string
+  -- Under it, the version: Saule Linux's own (`system`) on its own
+  -- screen; in a window on another system, that system's and Saule's.
+  -- With neither known, Saule's alone.
+  static fn version(info: SystemInfo, system: string = "") -> string
     local saule = "Saule " .. info.saule
     if info.host != "saule" and info.systemVersion != "" then
       return "Version " .. info.systemVersion .. " · " .. saule
+    end
+    if system != "" then
+      return "Version " .. system
     end
     return saule
   end
@@ -82,24 +86,41 @@ export class AboutPane extends View
     return info.processor
   end
 
-  -- The facts shown, in order: each a name and its value.
-  static fn facts(info: SystemInfo) -> table<table<string>>
+  -- What is said of the software running, in order: each a name and
+  -- its value.
+  static fn software(info: SystemInfo) -> table<table<string>>
+    return {
+      {"Saule", info.saule},
+      {"Window Manager", info.wm},
+      {"Kernel", info.kernel},
+      {"Open Windows", tostring(info.windows)},
+      {"Uptime", AboutPane.duration(info.uptime)},
+    }
+  end
+
+  -- What is said of the computer itself.
+  static fn hardware(info: SystemInfo) -> table<table<string>>
     local display = ""
     if info.screenWidth > 0 then
       display = info.screenWidth .. " × " .. info.screenHeight
     end
     return {
-      {"Computer", info.machine},
+      {"Model", info.machine},
       {"Processor", AboutPane.processor(info)},
       {"Graphics", info.graphics},
-      {"Window manager", info.wm},
-      {"Kernel", info.kernel},
       {"Memory", AboutPane.memory(info)},
       {"Storage", info.storage},
       {"Display", display},
-      {"Open windows", tostring(info.windows)},
-      {"Up for", AboutPane.duration(info.uptime)},
     }
+  end
+
+  -- Both, for telling when anything shown changed.
+  static fn facts(info: SystemInfo) -> table<table<string>>
+    local out = AboutPane.software(info)
+    for fact in AboutPane.hardware(info) do
+      Table.insert(out, fact)
+    end
+    return out
   end
 
   fn body(context: BuildContext) -> View
@@ -108,19 +129,23 @@ export class AboutPane extends View
 
     local system = AboutPane.title(info)
     local name = Text(system).font(18.0).foregroundStyle(Style.text)
-    local version = AboutPane.version(info)
+    local version = AboutPane.version(info, settings.machine.version)
     local said = Text(version).font(12.0).foregroundStyle(Style.dimText)
 
-    local rows: table<View> = {}
-    for fact in AboutPane.facts(info) do
-      Table.insert(rows, AboutPane.fact(fact[1], fact[2]))
+    local software: table<View> = {}
+    for fact in AboutPane.software(info) do
+      Table.insert(software, AboutPane.fact(fact[1], fact[2]))
+    end
+    local hardware: table<View> = {}
+    for fact in AboutPane.hardware(info) do
+      Table.insert(hardware, AboutPane.fact(fact[1], fact[2]))
     end
 
     local title = VStack(alignment: StackAlignment.Leading, spacing: 4.0) do
       show(name)
       show(said)
     end
-    local report = RowButton("Save to a USB Drive", fn()
+    local report = RowButton("Save to USB Drive", fn()
       settings.tell(fn(wm: WmSettings)
         wm.saveReport()
       end)
@@ -130,27 +155,41 @@ export class AboutPane extends View
     return Said.pane({
       PaneTitle("About"),
       title,
-      Group("This system", rows),
-      Group("When something does not work", {Row("A report of this computer", report)}),
+      Group("Operating System", software),
+      Group("System", hardware),
+      Group("Support", {Row("System report", report)}),
     })
   end
 
-  -- Memory, in kB: what is in use now, of all there is: "0.4 GB used of
-  -- 1.0 GB". Only all there is when what is in use isn't known.
+  -- How much memory the computer has, from the kB the system counts:
+  -- "512 MB", "1 GB", "1.5 GB", "8 GB".
+  --
+  -- The system counts a little less than is fitted (the firmware and
+  -- the graphics chip keep some back), so the count is taken up to the
+  -- next size memory comes in: a quarter of a gigabyte under four, a
+  -- whole one from there.
   static fn memory(info: SystemInfo) -> string
     if info.memory <= 0 then
       return ""
     end
-    local all = String.format("%.1f GB", (info.memory as float) / 1048576.0)
-    if info.memoryUsed <= 0 then
-      return all
+    local megabytes = (info.memory + 1023) / 1024
+    local step = 1024
+    if megabytes < 4096 then
+      step = 256
     end
-    local mb = (info.memoryUsed as float) / 1024.0
-    local used = String.format("%.0f MB", mb)
-    if mb >= 1000.0 then
-      used = String.format("%.1f GB", mb / 1024.0)
+    local fitted = (megabytes + step - 1) / step * step
+    if fitted < 1024 then
+      return fitted .. " MB"
     end
-    return used .. " used of " .. all
+    if fitted % 1024 == 0 then
+      return (fitted / 1024) .. " GB"
+    end
+    -- "1.5", "3.75": halves and quarters, without a nought after them.
+    local said = String.format("%.2f", (fitted as float) / 1024.0)
+    if String.ends(said, "0") then
+      said = String.sub(said, 1, String.len(said) - 1)
+    end
+    return said .. " GB"
   end
 
   -- A row that only tells: the value in place of a control. A value that

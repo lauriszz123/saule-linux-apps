@@ -1,0 +1,261 @@
+-- A PDF's pages, each drawn when it is turned to.
+--
+-- Drawing is `saule-pdf`'s, another program: it is asked how many pages
+-- there are and how large each is, and then for a page as a picture of
+-- a given width. A page takes a moment to draw, so it is asked for and
+-- not waited on: `poll`, from the window's tick, takes the picture once
+-- it is ready. Pictures are kept in a folder of the app's own while the
+-- document is open, so a page turned back to is there at once.
+
+from Picture import Picture
+from log import Logger
+
+export class Pages
+  static local log: Logger = Logger("preview")
+
+  -- The program asked, unless `SAULE_PDF` names another.
+  static program: string = "/bin/saule-pdf"
+
+  file: string
+  -- How many pages, and each one's width and height in points.
+  count: integer
+  widths: table<float>
+  heights: table<float>
+  -- Why it could not be read; "" when it could.
+  problem: string
+
+  -- The page shown, from 1, and its picture: the page asked for last,
+  -- once drawn. `shownPage` and `shownWidth` say what `picture` is of.
+  page: integer
+  picture: Picture?
+  shownPage: integer
+  shownWidth: integer
+
+  -- What is being drawn now: the page, its width in pixels, the file it
+  -- is written to and the program writing it.
+  local askedPage: integer
+  local askedWidth: integer
+  local askedFile: string
+  local drawing: Process?
+  -- Every picture's file made, to be removed when the document closes.
+  local made: table<string>
+  local folder: string
+
+  fn init(file: string)
+    self.file = file
+    self.count = 0
+    self.widths = {}
+    self.heights = {}
+    self.problem = ""
+    self.page = 1
+    self.picture = nil
+    self.shownPage = 0
+    self.shownWidth = 0
+    self.askedPage = 0
+    self.askedWidth = 0
+    self.askedFile = ""
+    self.drawing = nil
+    self.made = {}
+    self.folder = Pages.cache() .. "/" .. Os.pid()
+    Pages.sweep()
+    self.read()
+  end
+
+  -- Remove the pictures a Preview that is no longer running left
+  -- behind: one that was ended and not closed. Each keeps its own in a
+  -- folder named by its process's number.
+  static fn sweep() -> nil
+    local cache = Pages.cache()
+    if not Os.exists("/proc/self") or not Os.exists(cache) then
+      return
+    end
+    try
+      for name in Os.list(cache) do
+        if not Os.exists("/proc/" .. name) then
+          local folder = cache .. "/" .. name
+          for file in Os.list(folder) do
+            Os.remove(folder .. "/" .. file)
+          end
+          Os.remove(folder)
+        end
+      end
+    catch e: string
+      Pages.log.debug("could not tidy the cache", {reason: e})
+    end
+  end
+
+  static fn helper() -> string
+    return Os.getenv("SAULE_PDF") ?? Pages.program
+  end
+
+  -- Where the pictures of pages are kept.
+  static fn cache() -> string
+    local kept = Os.getenv("XDG_CACHE_HOME") ?? ""
+    if kept == "" then
+      kept = (Os.getenv("HOME") ?? "/tmp") .. "/.cache"
+    end
+    return kept .. "/saule/preview"
+  end
+
+  -- In single quotes, for a shell, whatever is in it.
+  static fn quote(text: string) -> string
+    return "'" .. String.replace(text, "'", "'\\''") .. "'"
+  end
+
+  -- Ask how many pages there are and how large each is.
+  local fn read() -> nil
+    local program = Pages.helper()
+    if not Os.exists(program) then
+      self.problem = "PDF documents cannot be shown on this system."
+      return
+    end
+    local command = Pages.quote(program) .. " info " .. Pages.quote(self.file)
+    local code, out, err = Os.capture(command)
+    if code != 0 then
+      self.problem = String.trim(err)
+      if self.problem == "" then
+        self.problem = "The document could not be opened."
+      end
+      return
+    end
+    for line in String.split(out, "\n") do
+      local words = String.split(line, " ")
+      if words[1] == "pages" then
+        self.count = (words[2] as integer?) ?? 0
+      elseif words[1] == "page" and #words >= 4 then
+        Table.insert(self.widths, (words[3] as float?) ?? 612.0)
+        Table.insert(self.heights, (words[4] as float?) ?? 792.0)
+      end
+    end
+    if self.count == 0 then
+      self.problem = "The document has no pages."
+    end
+  end
+
+  -- How tall the page shown is for its width.
+  fn shape() -> float
+    local width = self.widths[self.page] ?? 612.0
+    local height = self.heights[self.page] ?? 792.0
+    if width <= 0.0 then
+      return 1.0
+    end
+    return height / width
+  end
+
+  -- Turn to page `page`, kept within the document. True when that is
+  -- another page.
+  fn turnTo(page: integer) -> boolean
+    local to = Math.clamp(page, 1, Math.max(self.count, 1))
+    if to == self.page then
+      return false
+    end
+    self.page = to
+    return true
+  end
+
+  -- Have the page shown drawn `width` pixels wide, unless that is what
+  -- is shown or being drawn already.
+  fn ask(width: integer) -> nil
+    if self.problem != "" or width < 16 then
+      return
+    end
+    if self.shownPage == self.page and self.shownWidth == width then
+      return
+    end
+    if self.askedPage == self.page and self.askedWidth == width then
+      return
+    end
+    -- Another page or width was on its way: it is no longer wanted.
+    local drawing = self.drawing
+    if drawing != nil then
+      drawing!.kill()
+      self.drawing = nil
+    end
+    self.askedPage = self.page
+    self.askedWidth = width
+    self.askedFile = self.folder .. "/" .. self.page .. "-" .. width .. ".png"
+    if Os.exists(self.askedFile) then
+      self.take()
+      return
+    end
+    Os.mkdir(self.folder, true)
+    self.drawing = Os.spawn(
+      Pages.helper(),
+      {
+        "render",
+        self.file,
+        tostring(self.page),
+        tostring(width),
+        self.askedFile,
+      }
+    )
+    if self.drawing == nil then
+      self.problem = "The page could not be drawn."
+    end
+  end
+
+  -- Whether a page is being drawn.
+  fn busy() -> boolean
+    return self.drawing != nil
+  end
+
+  -- Take the page asked for if it has been drawn. True when there is a
+  -- new picture to show.
+  fn poll() -> boolean
+    local drawing = self.drawing
+    if drawing == nil then
+      return false
+    end
+    local code = drawing!.poll()
+    if code == nil then
+      return false
+    end
+    self.drawing = nil
+    if code! != 0 then
+      Pages.log.warn(
+        "a page was not drawn",
+        {page: self.askedPage, code: code!}
+      )
+      self.askedPage = 0
+      return false
+    end
+    Table.insert(self.made, self.askedFile)
+    return self.take()
+  end
+
+  -- Show the picture in the file asked for.
+  local fn take() -> boolean
+    local picture = Picture.load(self.askedFile)
+    if picture == nil then
+      self.askedPage = 0
+      return false
+    end
+    local before = self.picture
+    if before != nil then
+      before!.release()
+    end
+    self.picture = picture
+    self.shownPage = self.askedPage
+    self.shownWidth = self.askedWidth
+    return true
+  end
+
+  -- The document is closing: stop drawing, and remove what was drawn.
+  fn close() -> nil
+    local drawing = self.drawing
+    if drawing != nil then
+      drawing!.kill()
+      self.drawing = nil
+    end
+    local picture = self.picture
+    if picture != nil then
+      picture!.release()
+      self.picture = nil
+    end
+    for file in self.made do
+      Os.remove(file)
+    end
+    self.made = {}
+    Os.remove(self.folder)
+  end
+end

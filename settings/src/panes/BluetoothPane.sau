@@ -58,7 +58,7 @@ export class BluetoothPane extends View
       Table.insert(
         items,
         Said.note(
-          "To pair the keyboard, type " .. machine.passkey .. " on it and press Enter.",
+          "To complete pairing, type " .. machine.passkey .. " on the keyboard, then press Enter.",
           warning: true
         )
       )
@@ -80,14 +80,14 @@ export class BluetoothPane extends View
       Table.insert(items, Group("My Devices", paired))
     end
 
-    local searching = "Look for Devices"
+    local searching = "Search for Devices"
     if machine.bluetoothScanning then
       searching = "Looking…"
     end
     if #found == 0 then
-      local said = "None found yet."
+      local said = "No devices found."
       if machine.bluetoothScanning then
-        said = "Looking for devices…"
+        said = "Searching…"
       end
       Table.insert(found, Row(said, Said("")))
     end
@@ -101,7 +101,7 @@ export class BluetoothPane extends View
     Table.insert(
       items,
       Said.note(
-        "Put a mouse or keyboard in its pairing mode first, so it can be found."
+        "Make sure the device is in pairing mode."
       )
     )
     return Said.pane(items)

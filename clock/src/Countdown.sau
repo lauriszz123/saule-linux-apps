@@ -1,0 +1,96 @@
+-- A timer: set to a length, it counts down to nothing and says so once.
+-- It goes by a clock handed to it (`now`, in seconds).
+
+export class Countdown
+  -- What it is set to, in seconds.
+  length: integer
+  running: boolean
+  -- Run out, and not yet set again.
+  finished: boolean
+  -- What was left when it was last started or paused, and when that
+  -- was.
+  local left: float
+  local since: float
+  -- Whether running out has been said.
+  local told: boolean
+
+  -- The longest it can be set to: a second short of a hundred hours.
+  static longest: integer = 359999
+
+  fn init(length: integer = 300)
+    self.length = length
+    self.running = false
+    self.finished = false
+    self.left = length as float
+    self.since = 0.0
+    self.told = false
+  end
+
+  -- What is left at `now`, never less than nothing.
+  fn remaining(now: float) -> float
+    if self.running then
+      return Math.max(self.left - (now - self.since), 0.0)
+    end
+    return self.left
+  end
+
+  -- Whether it has been started and not yet set again.
+  fn begun() -> boolean
+    return self.running or self.finished or self.left != (self.length as float)
+  end
+
+  -- Set it to `seconds`, stopped.
+  fn set(seconds: integer) -> nil
+    self.length = Math.clamp(seconds, 0, Countdown.longest)
+    self.reset()
+  end
+
+  fn start(now: float) -> nil
+    if not self.running and self.left > 0.0 then
+      self.running = true
+      self.finished = false
+      self.since = now
+    end
+  end
+
+  fn pause(now: float) -> nil
+    if self.running then
+      self.left = self.remaining(now)
+      self.running = false
+    end
+  end
+
+  -- Back to what it was set to, stopped.
+  fn reset() -> nil
+    self.running = false
+    self.finished = false
+    self.told = false
+    self.left = self.length as float
+  end
+
+  -- Look at the clock. True the one time it is found to have run out.
+  fn check(now: float) -> boolean
+    if self.running and self.remaining(now) <= 0.0 then
+      self.running = false
+      self.finished = true
+      self.left = 0.0
+      if not self.told then
+        self.told = true
+        return true
+      end
+    end
+    return false
+  end
+
+  -- What is left as a timer says it: "05:00", "1:05:00". A part of a
+  -- second counts as a whole one, so that it reads 00:01 until the end.
+  static fn said(seconds: float) -> string
+    local whole = Math.floor(seconds + 0.999)
+    local minutes = whole / 60
+    local text = String.format("%02d:%02d", minutes % 60, whole % 60)
+    if minutes >= 60 then
+      return (minutes / 60) .. ":" .. text
+    end
+    return text
+  end
+end

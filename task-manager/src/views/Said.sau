@@ -1,0 +1,75 @@
+-- Figures, said the way a person reads them.
+
+export class Said
+  -- A share in percent: "12.3%", and "100%" without a decimal.
+  static fn percent(share: float) -> string
+    if share >= 99.95 then
+      return String.format("%.0f%%", share)
+    end
+    return String.format("%.1f%%", share)
+  end
+
+  -- The same without the sign, for a column headed "% CPU".
+  static fn share(share: float) -> string
+    return String.format("%.1f", share)
+  end
+
+  -- Memory, from kB: "412 MB", "1.2 GB", "640 KB".
+  static fn memory(kilobytes: integer) -> string
+    if kilobytes < 1024 then
+      return kilobytes .. " KB"
+    end
+    local megabytes = (kilobytes as float) / 1024.0
+    if megabytes < 1000.0 then
+      if megabytes < 10.0 then
+        return String.format("%.1f MB", megabytes)
+      end
+      return String.format("%.0f MB", megabytes)
+    end
+    return String.format("%.1f GB", megabytes / 1024.0)
+  end
+
+  -- The memory a process holds: a dash for one that holds none of its
+  -- own, as the kernel's threads do.
+  static fn held(kilobytes: integer) -> string
+    if kilobytes <= 0 then
+      return "—"
+    end
+    return Said.memory(kilobytes)
+  end
+
+  -- How much memory is fitted, from the kB the system counts, which is
+  -- a little less (the firmware and the graphics chip keep some back):
+  -- taken up to the next size memory comes in, a quarter of a gigabyte
+  -- under four and a whole one from there. "1 GB", "1.5 GB", "8 GB".
+  static fn fitted(kilobytes: integer) -> string
+    if kilobytes <= 0 then
+      return "—"
+    end
+    local megabytes = (kilobytes + 1023) / 1024
+    local step = 1024
+    if megabytes < 4096 then
+      step = 256
+    end
+    local fitted = (megabytes + step - 1) / step * step
+    if fitted < 1024 then
+      return fitted .. " MB"
+    end
+    if fitted % 1024 == 0 then
+      return (fitted / 1024) .. " GB"
+    end
+    local said = String.format("%.2f", (fitted as float) / 1024.0)
+    if String.ends(said, "0") then
+      said = String.sub(said, 1, String.len(said) - 1)
+    end
+    return said .. " GB"
+  end
+
+  -- "1 process", "84 processes".
+  static fn count(n: integer, one: string, many: string) -> string
+    if n == 1 then
+      return "1 " .. one
+    end
+    return n .. " " .. many
+  end
+end

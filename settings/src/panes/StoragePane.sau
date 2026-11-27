@@ -158,9 +158,9 @@ export class StoragePane extends View
   static fn about(report: StorageReport, volume: StorageVolume) -> string
     if volume.kind == "memory" then
       if report.persistent then
-        return "The system itself, which runs from memory."
+        return "System volume, loaded into memory."
       end
-      return "The system runs from memory, and there is no disk to keep" .. " things on: settings last until the computer turns off."
+      return "The system is running from memory and no data disk is" .. " available. Settings are lost when the computer shuts down."
     end
     local size = volume.driveBytes
     if size <= 0 then
@@ -173,7 +173,7 @@ export class StoragePane extends View
       drive = volume.model .. " · " .. drive
     end
     if volume.main and report.persistent then
-      return drive .. ". Settings and documents are kept here."
+      return drive .. ". Stores settings and documents."
     end
     return drive
   end

@@ -1,0 +1,226 @@
+-- A Markdown file as it reads: headings, paragraphs, lists, quotes,
+-- code, tables and pictures, down a column in the middle of the window.
+
+from shine import Graphics
+from uikit import *
+from model import Block, BlockKind, Document, Markdown, Run
+from Look import Look
+from RichText import RichText
+
+-- A quote: what is said, set in from a bar down its left side.
+export class Quoted extends SingleChildView
+  fn init(child: View, key: string? = nil)
+    self.super(child, key)
+  end
+
+  fn layout(el: Element, constraints: Constraints) -> Size
+    local child = el.childAt(1)
+    if child == nil then
+      return constraints.constrain(Size.zero())
+    end
+    local inset = 14.0
+    local inner = Constraints(
+      0.0,
+      Math.max(constraints.maxWidth - inset, 0.0),
+      0.0,
+      constraints.maxHeight
+    )
+    local size = child!.layout(inner)
+    child!.offset = Offset(inset, 0.0)
+    return constraints.constrain(Size(size.width + inset, size.height))
+  end
+
+  fn paint(el: Element, x: float, y: float) -> nil
+    Look.rule.apply()
+    Graphics.rectangle("fill", x, y + 1.0, 3.0, el.size.height - 2.0, 1.5)
+    el.paintChildren(x, y)
+  end
+end
+
+export class MarkdownView extends View
+  document: Document
+
+  fn init(document: Document, key: string? = nil)
+    self.super(key)
+    self.document = document
+  end
+
+  -- How large a heading of each level is.
+  static fn headingSize(level: integer) -> float
+    return match level
+      case 1 then 26.0
+      case 2 then 21.0
+      case 3 then 17.0
+      case 4 then 15.0
+      case _ then 14.0
+    end
+  end
+
+  fn body(context: BuildContext) -> View
+    local document = self.document
+    local parts: table<View> = {}
+    -- A list's items, gathered: they sit closer to one another than
+    -- one block does to the next.
+    local items: table<View> = {}
+    local close = fn()
+      if #items > 0 then
+        Table.insert(
+          parts,
+          VStack(
+            alignment: StackAlignment.Fill,
+            sizing: StackSize.Fit,
+            spacing: 5.0,
+            children: items
+          )
+        )
+        items = {}
+      end
+    end
+    for i = 1, #document.blocks do
+      local block = document.blocks[i]
+      local id = document.revision .. ":" .. i
+      if block.kind == BlockKind.Item then
+        Table.insert(items, MarkdownView.block(block, id))
+      else
+        close()
+        -- More air over a heading than over what follows one.
+        if block.kind == BlockKind.Heading and i > 1 then
+          Table.insert(parts, Spacer().frame(height: 6.0))
+        end
+        Table.insert(parts, MarkdownView.block(block, id))
+      end
+    end
+    close()
+    if #parts == 0 then
+      local none = Text("This document is empty.").font(13.0)
+      Table.insert(parts, none.foregroundStyle(Look.dimText))
+    end
+    local column = VStack(
+      alignment: StackAlignment.Fill,
+      sizing: StackSize.Fit,
+      spacing: 10.0,
+      children: parts
+    )
+    local inset = EdgeInsets.symmetric(horizontal: 28.0, vertical: 24.0)
+    local page = column.padding(insets: inset).frame(
+      maxWidth: Look.column + 56.0
+    )
+    return ScrollView(
+      child: page.centered(),
+      key: "markdown:" .. document.revision
+    )
+  end
+
+  static fn line() -> View
+    return Spacer().frame(height: 1.0).background(Look.rule)
+  end
+
+  -- One block as a view.
+  static fn block(block: Block, id: string) -> View
+    if block.kind == BlockKind.Heading then
+      local size = MarkdownView.headingSize(block.level)
+      local title = RichText(block.runs, id, size, heavy: true)
+      if block.level > 2 then
+        return title
+      end
+      -- The first two levels are ruled off.
+      return VStack(
+        alignment: StackAlignment.Fill,
+        sizing: StackSize.Fit,
+        spacing: 6.0
+      ) do
+        show(title)
+        MarkdownView.line()
+      end
+    end
+    if block.kind == BlockKind.Paragraph then
+      return RichText(block.runs, id)
+    end
+    if block.kind == BlockKind.Quote then
+      return Quoted(RichText(block.runs, id, 14.0, Look.dimText))
+    end
+    if block.kind == BlockKind.Rule then
+      return MarkdownView.line()
+    end
+    if block.kind == BlockKind.Code then
+      local style = TextStyle(Look.text, 12.0, TextStyle.fixedFace())
+      local code = Text(block.text, style)
+      return code.padding(12.0).background(Look.well, 6.0)
+    end
+    if block.kind == BlockKind.Item then
+      local mark = Text(block.marker).font(14.0).foregroundStyle(Look.dimText)
+      local indent = 4.0 + (block.level as float) * 20.0
+      return HStack(alignment: StackAlignment.Leading, spacing: 8.0) do
+        Spacer().frame(width: indent)
+        mark.aligned(Alignment.topRight()).frame(width: 22.0)
+        RichText(block.runs, id).expanded()
+      end
+    end
+    if block.kind == BlockKind.Table then
+      return MarkdownView.table_(block, id)
+    end
+    return MarkdownView.figure(block, id)
+  end
+
+  -- A table: its head in bold, a line under each row.
+  static fn table_(block: Block, id: string) -> View
+    local rows: table<View> = {}
+    local columns = 0
+    for row in block.rows do
+      columns = Math.max(columns, #row)
+    end
+    for r = 1, #block.rows do
+      local row = block.rows[r]
+      local cells: table<View> = {}
+      for c = 1, columns do
+        local runs: table<Run> = row[c] ?? {}
+        local cell = RichText(
+          runs,
+          id .. ":" .. r .. ":" .. c,
+          13.0,
+          heavy: r == 1
+        )
+        Table.insert(
+          cells,
+          cell.padding(
+            insets: EdgeInsets.symmetric(horizontal: 8.0, vertical: 5.0)
+          ).expanded()
+        )
+      end
+      if r > 1 then
+        Table.insert(rows, MarkdownView.line())
+      end
+      local shown = HStack(alignment: StackAlignment.Leading, children: cells)
+      if r == 1 then
+        Table.insert(rows, shown.background(Look.well))
+      else
+        Table.insert(rows, shown)
+      end
+    end
+    local grid = VStack(
+      alignment: StackAlignment.Fill,
+      sizing: StackSize.Fit,
+      children: rows
+    )
+    return grid.background(nil, 6.0, border: Look.rule)
+  end
+
+  -- A picture named in the document: shown where it can be read, and
+  -- said to be one where it cannot (one on the web is not fetched).
+  static fn figure(block: Block, id: string) -> View
+    local file = block.text
+    if file != "" and Os.exists(file) then
+      local natural = Images.size(file)
+      if natural.width > 0.0 then
+        local width = Math.min(natural.width / Display.scale(), Look.column)
+        return Image(file, width: width).aligned(Alignment.centerLeft())
+      end
+    end
+    local alt = Markdown.plain(block.runs)
+    if alt == "" then
+      alt = "Picture"
+    end
+    local said = Text("[" .. alt .. "]").font(13.0)
+    return said.foregroundStyle(Look.dimText)
+  end
+end

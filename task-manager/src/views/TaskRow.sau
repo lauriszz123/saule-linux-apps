@@ -1,0 +1,124 @@
+-- One process as a row of a list: the figures its columns ask for. A
+-- click chooses it.
+
+from uikit import *
+from model import Listing, Task
+from Look import Look
+from Said import Said
+
+-- One column of a list of processes: what it is called at its head,
+-- how wide it is (0: what is left), which side its figures keep to,
+-- and whether it is the one the row is known by, in full ink.
+export class Column
+  name: string
+  title: string
+  width: float
+  right: boolean
+  strong: boolean
+
+  fn init(
+    name: string,
+    title: string,
+    width: float,
+    right: boolean = false,
+    strong: boolean = false
+  )
+    self.name = name
+    self.title = title
+    self.width = width
+    self.right = right
+    self.strong = strong
+  end
+
+  -- What `task` has to say in this column.
+  fn said(task: Task) -> string
+    return match self.name
+      case "app" then task.title()
+      case "name" then task.name
+      case "service" then task.service()
+      case "purpose" then task.purpose()
+      case "status" then "Running"
+      case "cpu" then Said.share(task.cpu)
+      case "memory" then Said.held(task.memory)
+      case "threads" then tostring(task.threads)
+      case "pid" then tostring(task.pid)
+      case "user" then task.user
+      case _ then ""
+    end
+  end
+end
+
+export class TaskRow extends View
+  task: Task
+  columns: table<Column>
+  chosen: boolean
+  striped: boolean
+  onChosen: Action
+
+  fn init(
+    task: Task,
+    columns: table<Column>,
+    chosen: boolean,
+    striped: boolean,
+    onChosen: Action,
+    key: string? = nil
+  )
+    self.super(key ?? ("pid:" .. task.pid))
+    self.task = task
+    self.columns = columns
+    self.chosen = chosen
+    self.striped = striped
+    self.onChosen = onChosen
+  end
+
+  fn body(context: BuildContext) -> View
+    local task = self.task
+    local fill: Color? = nil
+    if self.chosen then
+      fill = Look.chosen
+    elseif self.striped then
+      fill = Look.stripe
+    end
+    local dim = Look.dimText
+    if self.chosen then
+      dim = Look.text
+    end
+
+    local cells: table<View> = {}
+    for column in self.columns do
+      Table.insert(cells, TaskRow.cell(column, column.said(task), dim))
+    end
+    local row = HStack(
+      alignment: StackAlignment.Center,
+      spacing: 8.0,
+      children: cells
+    )
+    local inset = EdgeInsets.symmetric(horizontal: 10.0)
+    local shown = row.padding(insets: inset).frame(
+      height: Look.rowHeight
+    ).background(fill, 5.0)
+    return GestureArea(child: shown, onTapDown: self.onChosen)
+  end
+
+  -- One cell, as wide as its column, its text on the column's side.
+  -- The column the row is known by is in full ink; the rest dimmer.
+  static fn cell(column: Column, said: string, dim: Color) -> View
+    local ink = dim
+    local size = 12.0
+    if column.strong then
+      ink = Look.text
+      size = 13.0
+    end
+    if column.name == "status" then
+      ink = Look.running
+    end
+    local text = Text(said).font(size).foregroundStyle(ink).lineLimit(1)
+    if column.width <= 0.0 then
+      return text.expanded()
+    end
+    if column.right then
+      return text.aligned(Alignment.centerRight()).frame(width: column.width)
+    end
+    return text.frame(width: column.width)
+  end
+end

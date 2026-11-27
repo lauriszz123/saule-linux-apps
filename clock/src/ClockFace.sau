@@ -1,0 +1,84 @@
+-- The time as a clock's face shows it: twelve marks round a dial, and
+-- three hands.
+
+from shine import Graphics
+from uikit import *
+from ClockLook import ClockLook
+
+export class ClockFace extends View
+  hours: integer
+  minutes: integer
+  seconds: integer
+
+  fn init(
+    hours: integer,
+    minutes: integer,
+    seconds: integer,
+    key: string? = nil
+  )
+    self.super(key)
+    self.hours = hours
+    self.minutes = minutes
+    self.seconds = seconds
+  end
+
+  fn body(context: BuildContext) -> View
+    local hours = self.hours
+    local minutes = self.minutes
+    local seconds = self.seconds
+    local paint = fn(x: float, y: float, width: float, height: float)
+      local size = Math.min(width, height)
+      local cx = x + width / 2.0
+      local cy = y + height / 2.0
+      local r = size / 2.0 - 4.0
+      ClockLook.well.apply()
+      Graphics.circle("fill", cx, cy, r)
+      ClockLook.faint.apply()
+      Graphics.setLineWidth(1.5)
+      Graphics.circle("line", cx, cy, r)
+
+      -- The marks: longer and brighter at each quarter.
+      for i = 0, 11 do
+        local angle = Math.pi * (i as float) / 6.0
+        local inner = r * 0.88
+        if i % 3 == 0 then
+          inner = r * 0.80
+          ClockLook.text.apply()
+          Graphics.setLineWidth(2.5)
+        else
+          ClockLook.dimText.apply()
+          Graphics.setLineWidth(1.5)
+        end
+        Graphics.line(
+          cx + Math.sin(angle) * inner,
+          cy - Math.cos(angle) * inner,
+          cx + Math.sin(angle) * r * 0.94,
+          cy - Math.cos(angle) * r * 0.94
+        )
+      end
+
+      -- A hand from the middle, `turn` of the way round, `reach` of the
+      -- way out.
+      local hand = fn(turn: float, reach: float, thick: float)
+        local angle = Math.pi * 2.0 * turn
+        Graphics.setLineWidth(thick)
+        Graphics.line(
+          cx - Math.sin(angle) * r * 0.08,
+          cy + Math.cos(angle) * r * 0.08,
+          cx + Math.sin(angle) * r * reach,
+          cy - Math.cos(angle) * r * reach
+        )
+      end
+      local minute = (minutes as float) + (seconds as float) / 60.0
+      local hour = ((hours % 12) as float) + minute / 60.0
+      ClockLook.text.apply()
+      hand(hour / 12.0, 0.50, 4.5)
+      hand(minute / 60.0, 0.76, 3.0)
+      ClockLook.accent.apply()
+      hand((seconds as float) / 60.0, 0.84, 1.5)
+      Graphics.circle("fill", cx, cy, 4.0)
+      Graphics.setLineWidth(1.0)
+    end
+    return Canvas(painter: paint)
+  end
+end

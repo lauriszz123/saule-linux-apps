@@ -24,7 +24,7 @@ export class NetworkPane extends View
       if machine.wiredAddress != "" then
         status = "Connected"
       elseif machine.cable then
-        status = "Waiting for an address"
+        status = "Obtaining IP address…"
       end
       local rows: table<View> = {Row("Status", Said(status))}
       if machine.wiredAddress != "" then
@@ -48,7 +48,7 @@ export class NetworkPane extends View
     if not machine.wired and machine.radio == "none" then
       Table.insert(
         items,
-        Said.note("This computer has nothing to connect to a network with.")
+        Said.note("No network hardware was detected.")
       )
     end
     return Said.pane(items)

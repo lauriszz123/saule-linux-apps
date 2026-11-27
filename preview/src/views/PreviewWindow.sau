@@ -1,0 +1,345 @@
+-- Preview's window: the bar, and under it the document; over them the
+-- panel that asks what to open.
+--
+-- The keys:
+--
+--   Ctrl+O                 open a file
+--   Ctrl+=  Ctrl+-         larger, smaller
+--   Ctrl+0                 as large as fits
+--   Left, Right            a PDF's page before, the page after
+--   Page Up, Page Down     the same; Home and End, its first and last
+--   arrows                 move a picture larger than the window
+--   Ctrl+E                 edit a Markdown file
+
+import shine
+from uikit import *
+from "fileskit" import FilePanel, PanelState
+from model import Apps, Document, Kind
+from Look import Look
+from PreviewBar import PreviewBar
+from PictureView import PictureView
+from MarkdownView import MarkdownView
+
+export class PreviewWindow extends View
+  document: Document
+
+  -- The panel that asks what to open.
+  static panel: PanelState = PanelState()
+
+  -- How long the width a page is wanted at has to stand before the page
+  -- is drawn at it, in seconds: a window being dragged wider asks for a
+  -- new width at every step.
+  static settle: float = 0.2
+
+  fn init(document: Document, key: string? = nil)
+    self.super(key)
+    self.document = document
+  end
+
+  -- It has a tick to run: see `View.ticks`.
+  fn ticks() -> boolean
+    return true
+  end
+
+  -- How wide a page is drawn in a window `width` wide, in points.
+  static fn pageWidth(document: Document, width: float) -> float
+    local fitted = Math.min(
+      Math.max(width - Look.margin * 2.0, 64.0),
+      Look.widest
+    )
+    local zoom = document.viewing.zoom
+    if zoom > 0.0 then
+      return fitted * zoom
+    end
+    return fitted
+  end
+
+  fn tick(el: Element, dt: float) -> nil
+    local bag: table = el.data.scratch
+    local document = self.document
+
+    -- The file the app was started with.
+    if document.pending != "" then
+      local file = document.pending
+      document.pending = ""
+      document.open(file)
+      el.markNeedsBuild()
+    end
+
+    local title = document.title()
+    if title == "" then
+      title = "Preview"
+    end
+    if title != (bag.title as string?) then
+      bag.title = title
+      Window.setTitle(title)
+    end
+
+    local narrow = el.size.width > 0.0 and el.size.width < Look.narrowBelow
+    if narrow != ((bag.narrow as boolean?) ?? false) or el.size.width != ((bag.width as float?) ?? 0.0) then
+      bag.narrow = narrow
+      bag.width = el.size.width
+      el.markNeedsBuild()
+    end
+
+    -- A PDF's page: drawn at the width it is shown at, once that has
+    -- stood for a moment, and shown when it has been drawn.
+    local pages = document.pages
+    if pages == nil or el.size.width <= 0.0 then
+      return
+    end
+    local points = PreviewWindow.pageWidth(document, el.size.width)
+    local wanted = Math.floor(points * Display.scale() + 0.5)
+    local key = pages!.page .. ":" .. wanted
+    if key != (bag.wanted as string?) then
+      bag.wanted = key
+      bag.wantedFor = 0.0
+    end
+    local stood = ((bag.wantedFor as float?) ?? 0.0) + dt
+    bag.wantedFor = stood
+    -- The first page is drawn at once; a new width waits to settle.
+    if stood >= PreviewWindow.settle or pages!.picture == nil then
+      pages!.ask(wanted)
+    end
+    if pages!.poll() then
+      el.markNeedsBuild()
+    elseif pages!.busy() or stood < PreviewWindow.settle then
+      -- Something is on its way: the loop keeps going round for it.
+      Repaint.request()
+    end
+  end
+
+  -- The app is closing: what is open is let go of.
+  fn unmounted(el: Element) -> nil
+    self.document.close()
+  end
+
+  fn body(context: BuildContext) -> View
+    local document = self.document
+    local panel = PreviewWindow.panel
+    local revision = context.state("revision", 0)
+    local refresh = fn()
+      revision.set(revision.int(0) + 1)
+    end
+    local bag: table = context.data().scratch
+    local narrow = (bag.narrow as boolean?) ?? false
+    local width = (bag.width as float?) ?? 0.0
+
+    local open = fn()
+      panel.askOpen(document.folder())
+      refresh()
+    end
+    -- Larger (1), smaller (-1) or as large as fits (0).
+    local zoom = fn(way: integer)
+      local viewing = document.viewing
+      if way == 0 then
+        viewing.zoom = 0.0
+      elseif document.kind == Kind.Pdf then
+        -- A page's zoom is against the window's width.
+        local now = viewing.zoom
+        if now == 0.0 then
+          now = 1.0
+        end
+        if way > 0 then
+          viewing.zoom = Math.min(now * 1.25, 4.0)
+        else
+          viewing.zoom = Math.max(now / 1.25, 0.25)
+        end
+      elseif way > 0 then
+        viewing.zoomBy(1.25)
+      else
+        viewing.zoomBy(0.8)
+      end
+      refresh()
+    end
+    -- To the page after (1) or before (-1), from its top; coming back
+    -- to a page, from its foot.
+    local turn = fn(way: integer)
+      local pages = document.pages
+      if pages != nil and pages!.turnTo(pages!.page + way) then
+        document.viewing.x = 0.0
+        document.viewing.y = 0.0
+        if way < 0 then
+          document.viewing.y = 1000000.0
+        end
+        refresh()
+      end
+    end
+    local edit = fn()
+      if document.kind == Kind.Markdown and not Apps.open(
+        "editor",
+        document.path
+      ) then
+        document.problem = "Editor could not be opened."
+        refresh()
+      end
+    end
+
+    local content = PreviewWindow.content(document, width, open, turn, refresh)
+    local line = Spacer().frame(height: 1.0).background(Look.hairline)
+    local window = VStack(alignment: StackAlignment.Fill) do
+      PreviewBar(document, narrow, open, zoom, turn, edit)
+      show(line)
+      content.expanded()
+      if document.problem != "" then
+        PreviewWindow.notice(document.problem)
+      end
+    end
+
+    local layers: table<View> = {window}
+    if panel.shown then
+      local chosen = fn(path: string)
+        document.open(path)
+        refresh()
+      end
+      local cancelled = fn()
+      end
+      Table.insert(layers, FilePanel(panel, chosen, cancelled, refresh))
+    end
+
+    local keys = fn(e: KeyEvent) -> boolean
+      if panel.shown then
+        return false
+      end
+      local handled = PreviewWindow.key(document, e, open, zoom, turn, edit)
+      if handled then
+        refresh()
+      end
+      return handled
+    end
+    local all = ZStack(children: layers)
+    local listening = KeyboardListener(onKeyDown: keys, child: all)
+    return Theme(data: Look.theme(), child: listening)
+  end
+
+  -- The document, as its kind is shown; with nothing open, the way to
+  -- open something.
+  static fn content(
+    document: Document,
+    width: float,
+    open: Action,
+    turn: ValueChanged<integer>,
+    refresh: Action
+  ) -> View
+    if document.kind == Kind.Picture and document.picture != nil then
+      return PictureView(
+        document.picture!,
+        document.viewing,
+        refresh,
+        key: "picture:" .. document.revision
+      )
+    end
+    if document.kind == Kind.Markdown then
+      return MarkdownView(document, key: "markdown")
+    end
+    local pages = document.pages
+    if document.kind == Kind.Pdf and pages != nil then
+      local picture = pages!.picture
+      if picture == nil then
+        return PreviewWindow.message("Loading…", "")
+      end
+      return PictureView(
+        picture!,
+        document.viewing,
+        refresh,
+        PreviewWindow.pageWidth(document, width),
+        turn,
+        key: "pages:" .. document.revision
+      )
+    end
+
+    local said = Text("No Document Open").font(15.0).foregroundStyle(Look.text)
+    local more = Text(
+      "Preview opens pictures, PDF documents and Markdown files."
+    )
+    local button = Button(
+      label: "Open…",
+      onPressed: open,
+      padding: EdgeInsets.symmetric(horizontal: 18.0, vertical: 6.0)
+    )
+    local column = VStack(
+      alignment: StackAlignment.Center,
+      sizing: StackSize.Fit,
+      spacing: 8.0
+    ) do
+      show(said)
+      more.font(12.0).foregroundStyle(Look.dimText)
+      Spacer().frame(height: 6.0)
+      show(button)
+    end
+    return column.centered().background(Look.desk)
+  end
+
+  static fn message(title: string, detail: string) -> View
+    local said = Text(title).font(14.0).foregroundStyle(Look.dimText)
+    return said.centered().background(Look.desk)
+  end
+
+  -- What went wrong, along the foot.
+  static fn notice(said: string) -> View
+    local text = Text(said).font(12.0).foregroundStyle(Look.warning)
+    local inset = EdgeInsets.symmetric(horizontal: 12.0)
+    return text.lineLimit(1).padding(insets: inset).frame(height: 26.0).background(
+      Look.bar
+    )
+  end
+
+  -- One key. True when it was the window's.
+  static fn key(
+    document: Document,
+    e: KeyEvent,
+    open: Action,
+    zoom: ValueChanged<integer>,
+    turn: ValueChanged<integer>,
+    edit: Action
+  ) -> boolean
+    local key = e.key
+    local viewing = document.viewing
+    if e.command() then
+      match key
+        case "o" then open()
+        case "=" then zoom(1)
+        case "+" then zoom(1)
+        case "-" then zoom(-1)
+        case "0" then zoom(0)
+        case "e" then edit()
+        case _ then
+          return false
+      end
+      return true
+    end
+    if e.alt then
+      return false
+    end
+
+    local pages = document.pages
+    if pages != nil then
+      match key
+        case "right" then turn(1)
+        case "pagedown" then turn(1)
+        case "space" then turn(1)
+        case "left" then turn(-1)
+        case "pageup" then turn(-1)
+        case "home" then turn(1 - pages!.page)
+        case "end" then turn(pages!.count - pages!.page)
+        case "down" then viewing.moveBy(0.0, 60.0)
+        case "up" then viewing.moveBy(0.0, -60.0)
+        case _ then
+          return false
+      end
+      return true
+    end
+    if document.kind == Kind.Picture then
+      match key
+        case "left" then viewing.moveBy(-60.0, 0.0)
+        case "right" then viewing.moveBy(60.0, 0.0)
+        case "up" then viewing.moveBy(0.0, -60.0)
+        case "down" then viewing.moveBy(0.0, 60.0)
+        case _ then
+          return false
+      end
+      return true
+    end
+    return false
+  end
+end

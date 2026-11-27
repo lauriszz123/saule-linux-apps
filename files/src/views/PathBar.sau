@@ -82,7 +82,7 @@ export class PathBar extends View
       count = count .. ", " .. Said.size(browser.available) .. " available"
     end
     if not browser.readable then
-      count = "This folder can't be looked in"
+      count = "This folder cannot be opened"
     end
     if roomy or not browser.readable then
       local counted = Text(count).font(11.0).foregroundStyle(Look.dimText)
