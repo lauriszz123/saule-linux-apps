@@ -1,10 +1,12 @@
 -- Reading a folder: everything in it, each with its size and date, in
 -- the order asked for.
 --
--- Saule lists a folder's names and no more, so the rest is asked of
--- `stat`, once for the whole folder: a line a file, "kind|size|changed|
--- name". Links are followed, so a link to a folder opens as one; a link
--- to nothing is left out.
+-- Asked of Saule itself (`Os.list`, `Os.fsInfo`), a name at a time, and
+-- of no other program: a folder open in a window is read again every
+-- few seconds, and starting `stat` for it stopped the window for as
+-- long as that took, which on a slow machine could be seen. Links are
+-- followed, so a link to a folder opens as one; a link to nothing is
+-- left out.
 
 from Entry import Entry
 from Shell import Shell
@@ -17,22 +19,21 @@ export enum SortBy
 end
 
 export class Folder
-  -- Everything in `path`, folders and files together, by name. Nil when
-  -- it can't be read: no such folder, or no leave to look in it.
-  static fn list(path: string, hidden: boolean = false) -> table<Entry>?
+  -- Everything in `path`, folders and files together, by name (or in
+  -- no order, for a caller that puts them in its own). Nil when it
+  -- can't be read: no such folder, or no leave to look in it.
+  static fn list(
+    path: string,
+    hidden: boolean = false,
+    sorted: boolean = true
+  ) -> table<Entry>?
     if not Os.exists(path) then
       return nil
     end
-    -- Three patterns for every name: plain ones, ones starting with a
-    -- dot, and ones starting with two. One that matches nothing is
-    -- passed as it is written and fails quietly.
-    local names = "*"
-    if hidden then
-      names = "* .[!.]* ..?*"
-    end
-    local command = "cd " .. Shell.quote(path) .. " 2>/dev/null || exit 9; " .. "stat -L -c '%F|%s|%Y|%n' -- " .. names .. " 2>/dev/null; true"
-    local code, out, err = Os.capture(command)
-    if code != 0 then
+    local names: table<string> = {}
+    try
+      names = Os.list(path)
+    catch e: string
       return nil
     end
 
@@ -41,36 +42,41 @@ export class Folder
       base = base .. "/"
     end
     local found: table<Entry> = {}
-    for line in String.split(out, "\n") do
-      local entry = Folder.parse(line, base)
-      if entry != nil then
-        Table.insert(found, entry!)
+    for name in names do
+      if hidden or not String.starts(name, ".") then
+        local entry = Folder.read(name, base .. name)
+        if entry != nil then
+          Table.insert(found, entry!)
+        end
       end
     end
-    Folder.sort(found, SortBy.Name, true)
+    if sorted then
+      Folder.sort(found, SortBy.Name, true)
+    end
     return found
   end
 
-  -- One of `stat`'s lines. The name comes last and may have a bar in it.
-  static fn parse(line: string, base: string) -> Entry?
-    local fields = String.split(line, "|")
-    if #fields < 4 then
+  -- What is at `path`, called `name`. Nil for what has gone since it
+  -- was listed, and for a link to nothing.
+  static fn read(name: string, path: string) -> Entry?
+    local info = Os.fsInfo(path)
+    if info == nil then
       return nil
     end
-    local name = fields[4]
-    for i = 5, #fields do
-      name = name .. "|" .. fields[i]
+    local folder = info!.kind == FsKind.Dir
+    if info!.kind == FsKind.Symlink then
+      -- `Os.fsInfo` describes the link itself. Asked about "." inside
+      -- it, it has to go through the link, and answers only when a
+      -- folder is at the end of it.
+      local through = Os.fsInfo(path .. "/.")
+      if through != nil then
+        info = through
+        folder = true
+      elseif not Os.exists(path) then
+        return nil
+      end
     end
-    if name == "" or name == "*" then
-      return nil
-    end
-    return Entry(
-      name,
-      base .. name,
-      fields[1] == "directory",
-      (fields[2] as integer?) ?? 0,
-      (fields[3] as integer?) ?? 0
-    )
+    return Entry(name, path, folder, info!.size, info!.modifiedAt ?? 0)
   end
 
   -- Put `entries` in order: by `by`, forwards or backwards. Names are
@@ -78,8 +84,6 @@ export class Folder
   -- settle what `by` leaves equal.
   static fn sort(entries: table<Entry>, by: SortBy, ascending: boolean) -> nil
     local before = fn(a: Entry, b: Entry) -> boolean
-      local an = String.lower(a.name)
-      local bn = String.lower(b.name)
       match by
         case SortBy.Modified then
           if a.modified != b.modified then
@@ -95,7 +99,7 @@ export class Folder
           end
         case SortBy.Name then nil
       end
-      return an < bn
+      return a.folded < b.folded
     end
     Table.sort(entries, fn(a: Entry, b: Entry) -> boolean
       if ascending then
@@ -144,14 +148,10 @@ export class Folder
     return folder .. "/" .. name
   end
 
-  -- How much room is left on the disk `path` is on, in bytes; -1 when
-  -- that can't be told.
-  static fn available(path: string) -> integer
-    local out = Shell.output("df -k " .. Shell.quote(path) .. " 2>/dev/null")
-    if out == nil then
-      return -1
-    end
-    local lines = String.split(String.trim(out!), "\n")
+  -- How much room is left on the disk `path` is on, in bytes, from what
+  -- `df -k` printed about it; -1 when that can't be told.
+  static fn availableIn(out: string) -> integer
+    local lines = String.split(String.trim(out), "\n")
     local words: table<string> = {}
     for word in String.split(lines[#lines], " ") do
       if word != "" then
@@ -169,5 +169,47 @@ export class Folder
       return -1
     end
     return kilobytes! * 1024
+  end
+end
+
+-- How much room a disk has left, asked without waiting for the answer.
+--
+-- `df` is another program, and a window that stops until it has
+-- finished stops for as long as starting a program takes: every time a
+-- folder was opened. `ask` starts it and comes straight back; `take`
+-- has the answer once there is one.
+export class Room
+  static local query: Process? = nil
+  static local output: string = ""
+
+  -- Ask about the disk `path` is on. A question still waiting for its
+  -- answer is dropped: the folder it was about has been left.
+  static fn ask(path: string) -> nil
+    local running = Room.query
+    if running != nil then
+      running!.kill()
+    end
+    Room.output = ""
+    Room.query = Os.spawn("df", {"-k", path})
+  end
+
+  -- The answer, in bytes (-1: it can't be told), once `df` has finished
+  -- and all it printed has been read; nil until then, and after it has
+  -- been taken.
+  static fn take() -> integer?
+    local query = Room.query
+    if query == nil then
+      return nil
+    end
+    Room.output ..= Bytes.toString(query!.read()) ?? ""
+    local code = query!.poll()
+    if code == nil or not query!.atEof() then
+      return nil
+    end
+    Room.query = nil
+    if code! != 0 then
+      return -1
+    end
+    return Folder.availableIn(Room.output)
   end
 end

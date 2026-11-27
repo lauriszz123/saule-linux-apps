@@ -20,17 +20,21 @@ export class Sidebar extends View
   open: Pane
   machine: MachineInfo
   onOpen: ValueChanged<Pane>
+  -- Icons alone, for a narrow window.
+  compact: boolean
 
   fn init(
     open: Pane,
     machine: MachineInfo,
     onOpen: ValueChanged<Pane>,
+    compact: boolean = false,
     key: string? = nil
   )
     self.super(key)
     self.open = open
     self.machine = machine
     self.onOpen = onOpen
+    self.compact = compact
   end
 
   -- The panes, grouped, in the order they are listed.
@@ -115,7 +119,7 @@ export class Sidebar extends View
         local open = fn()
           self.onOpen(pane)
         end
-        Table.insert(rows, SidebarRow(pane, pane == lit, open))
+        Table.insert(rows, SidebarRow(pane, pane == lit, open, self.compact))
       end
     end
 

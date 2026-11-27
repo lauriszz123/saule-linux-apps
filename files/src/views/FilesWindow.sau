@@ -75,9 +75,16 @@ export class FilesWindow extends View
 
     -- How wide the folder is shown, which says what there is room for:
     -- the window can be tiled into half the screen at any moment.
-    local width = Math.max(el.size.width - Look.sidebarWidth, 1.0)
-    if width != browser.width then
+    local compact = el.size.width > 0.0 and el.size.width < Look.narrowBelow
+    local width = Math.max(el.size.width - Look.sidebar(compact), 1.0)
+    if width != browser.width or compact != browser.compact then
       browser.width = width
+      browser.compact = compact
+      el.markNeedsBuild()
+    end
+
+    -- How much room the disk has, when the answer has come.
+    if browser.measured() then
       el.markNeedsBuild()
     end
 
@@ -107,7 +114,7 @@ export class FilesWindow extends View
       bag.drives = plugged
       el.markNeedsBuild()
     end
-    if browser.renaming == "" and browser.asking == "" and browser.reload() then
+    if browser.renaming == "" and browser.asking == "" and browser.look() then
       el.markNeedsBuild()
     end
   end
@@ -124,9 +131,6 @@ export class FilesWindow extends View
     if said != "" then
       FilesWindow.notice = said
       FilesWindow.noticeAt = Os.clock()
-    end
-    if browser.available < 0 and browser.readable then
-      browser.measure()
     end
 
     local content: View = FileList(browser, refresh)
@@ -148,7 +152,7 @@ export class FilesWindow extends View
         local origin = absoluteOf(context.element())
         showMenu(
           context,
-          origin.dx + Look.sidebarWidth + x,
+          origin.dx + Look.sidebar(browser.compact) + x,
           origin.dy + Look.barHeight + 1.0 + y,
           items: Menus.forFolder(browser, refresh),
           width: 200.0
@@ -164,7 +168,7 @@ export class FilesWindow extends View
       PathBar(browser, FilesWindow.notice, refresh)
     end
     local window = HStack(alignment: StackAlignment.Fill) do
-      PlaceList(browser, refresh).frame(width: Look.sidebarWidth)
+      PlaceList(browser, refresh).frame(width: Look.sidebar(browser.compact))
       folder.expanded()
     end
 

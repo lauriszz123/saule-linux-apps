@@ -10,17 +10,21 @@ export class SidebarRow extends View
   pane: Pane
   selected: boolean
   onOpen: Action
+  -- The icon alone, for a narrow window.
+  compact: boolean
 
   fn init(
     pane: Pane,
     selected: boolean,
     onOpen: Action,
+    compact: boolean = false,
     key: string? = nil
   )
     self.super(key)
     self.pane = pane
     self.selected = selected
     self.onOpen = onOpen
+    self.compact = compact
   end
 
   fn body(context: BuildContext) -> View
@@ -29,10 +33,13 @@ export class SidebarRow extends View
       fill = Theme.of(context).primary
     end
 
+    local compact = self.compact
     local row = HStack(alignment: StackAlignment.Center, spacing: 8.0) do
       PaneIcon(self.pane).frame(width: 20.0, height: 20.0)
-      Text(self.pane.title()).font(13.0).foregroundStyle(Style.text)
-      Spacer()
+      if not compact then
+        Text(self.pane.title()).font(13.0).foregroundStyle(Style.text)
+        Spacer()
+      end
     end
 
     local inset = EdgeInsets.symmetric(horizontal: 8.0, vertical: 5.0)

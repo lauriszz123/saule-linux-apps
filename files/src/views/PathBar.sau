@@ -31,6 +31,10 @@ export class PathBar extends View
     local browser = self.browser
     local refresh = self.refresh
     local parts: table<View> = {}
+    -- How wide the folder is shown: in a narrow window the way is
+    -- shorter and the count says less, so that neither is cut off.
+    local wide = browser.width <= 0.0 or browser.width >= 430.0
+    local roomy = browser.width <= 0.0 or browser.width >= 280.0
 
     if self.notice != "" then
       local said = Text(self.notice).font(11.0).foregroundStyle(Look.warning)
@@ -44,8 +48,15 @@ export class PathBar extends View
         at = Folder.parent(at)
       end
       Table.insert(steps, "/", 1)
-      -- A long way is shown by its end: the last five steps.
-      local first = Math.max(#steps - 4, 1)
+      -- A long way is shown by its end: the last five steps, and fewer
+      -- where the window has no room for five.
+      local shown = 5
+      if not roomy then
+        shown = 2
+      elseif not wide then
+        shown = 3
+      end
+      local first = Math.max(#steps - shown + 1, 1)
       for i = first, #steps do
         local path = steps[i]
         if i > first then
@@ -67,13 +78,16 @@ export class PathBar extends View
 
     Table.insert(parts, Spacer())
     local count = Said.items(#browser.entries)
-    if browser.available >= 0 then
+    if browser.available >= 0 and wide then
       count = count .. ", " .. Said.size(browser.available) .. " available"
     end
     if not browser.readable then
       count = "This folder can't be looked in"
     end
-    Table.insert(parts, Text(count).font(11.0).foregroundStyle(Look.dimText))
+    if roomy or not browser.readable then
+      local counted = Text(count).font(11.0).foregroundStyle(Look.dimText)
+      Table.insert(parts, counted.lineLimit(1))
+    end
 
     local row = HStack(
       alignment: StackAlignment.Center,

@@ -18,6 +18,8 @@ export class Look
   static screen: Color = Color(0.0, 0.0, 0.0, 0.35)
 
   static barHeight: float = 38.0
+  -- A window narrower than this keeps only the bar's first buttons.
+  static narrowBelow: float = 360.0
   static footHeight: float = 22.0
 
   -- The page's margins.

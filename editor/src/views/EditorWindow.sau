@@ -76,6 +76,13 @@ export class EditorWindow extends View
       bag.title = title
       Window.setTitle(title)
     end
+    -- The window can be tiled into a strip of the screen at any moment:
+    -- narrow, the bar keeps only what fits.
+    local narrow = el.size.width > 0.0 and el.size.width < Look.narrowBelow
+    if narrow != ((bag.narrow as boolean?) ?? false) then
+      bag.narrow = narrow
+      el.markNeedsBuild()
+    end
   end
 
   fn body(context: BuildContext) -> View
@@ -155,6 +162,7 @@ export class EditorWindow extends View
       return true
     end
 
+    local narrow = (context.data().scratch.narrow as boolean?) ?? false
     local toolbar = EditorBar(
       document,
       settings.wrap,
@@ -175,7 +183,8 @@ export class EditorWindow extends View
         settings.wrap = not settings.wrap
         settings.save()
         refresh()
-      end
+      end,
+      narrow
     )
     local page = Page(
       document,

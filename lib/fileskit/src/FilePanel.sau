@@ -291,22 +291,39 @@ export class FilePanel extends View
     return GestureArea(child: label.padding(insets: inset), onTap: action)
   end
 
+  -- A row's height: its picture, and the room above and below it.
+  static rowHeight: float = 26.0
+
   static fn list(state: PanelState, finish: Action, refresh: Action) -> View
-    local rows: table<View> = {}
-    for entry in state.entries do
-      Table.insert(rows, FilePanel.row(state, entry, finish, refresh))
-    end
-    if #rows == 0 then
-      local none = Text("This folder is empty.").font(12.0)
-      Table.insert(
-        rows,
-        none.foregroundStyle(FilePanel.dim).padding(12.0).centered()
+    local entries = state.entries
+    local well: View = Text("This folder is empty.").font(12.0).foregroundStyle(
+      FilePanel.dim
+    ).padding(16.0).centered()
+    if #entries > 0 then
+      -- Only the rows that show are built, and choosing one builds
+      -- again only what its stamp says changed.
+      local row = fn(i: integer) -> View
+        return FilePanel.row(state, entries[i], finish, refresh)
+      end
+      local said = fn(i: integer) -> string
+        local entry = entries[i]
+        local text = entry.path .. "|" .. entry.modified
+        if entry.path == state.chosen then
+          return text .. "|chosen"
+        end
+        return text
+      end
+      well = LazyList(
+        #entries,
+        FilePanel.rowHeight,
+        row,
+        stamp: said,
+        spacing: 1.0,
+        padding: EdgeInsets.all(4.0),
+        key: state.folder
       )
     end
-    local fill = StackAlignment.Fill
-    local column = VStack(alignment: fill, spacing: 1.0, children: rows)
-    local scroll = ScrollView(child: column.padding(4.0), key: state.folder)
-    return scroll.frame(height: FilePanel.listHeight).background(
+    return well.frame(height: FilePanel.listHeight).background(
       FilePanel.well,
       8.0
     )

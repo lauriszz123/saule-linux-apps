@@ -25,6 +25,11 @@ export class Style
   static segment: Color = Color(1.0, 1.0, 1.0, 0.22)
 
   static sidebarWidth: float = 204.0
+  -- In a window narrower than `narrowBelow` the sidebar is its icons
+  -- alone, this wide, and the pane has the rest: tiled three to a
+  -- screen, the names took the room the settings needed.
+  static sidebarIcons: float = 56.0
+  static narrowBelow: float = 560.0
   static padding: float = 20.0
   static rowHeight: float = 40.0
   static cardRadius: float = 10.0

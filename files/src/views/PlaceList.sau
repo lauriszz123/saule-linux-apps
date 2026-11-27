@@ -17,12 +17,19 @@ export class PlaceList extends View
   end
 
   fn body(context: BuildContext) -> View
-    local rows: table<View> = {PlaceList.heading("Favourites")}
+    -- In a narrow window: the icons alone, with nothing over them.
+    local compact = self.browser.compact
+    local rows: table<View> = {}
+    if not compact then
+      Table.insert(rows, PlaceList.heading("Favourites"))
+    end
     for place in Places.favourites() do
       Table.insert(rows, self.row(place))
     end
     Table.insert(rows, Spacer().frame(height: 10.0))
-    Table.insert(rows, PlaceList.heading("Locations"))
+    if not compact then
+      Table.insert(rows, PlaceList.heading("Locations"))
+    end
     for place in Places.locations() do
       Table.insert(rows, self.row(place))
     end
@@ -34,6 +41,9 @@ export class PlaceList extends View
     local fill = StackAlignment.Fill
     local list = VStack(alignment: fill, spacing: 1.0, children: rows)
     local inset = EdgeInsets.symmetric(horizontal: 8.0, vertical: 10.0)
+    if compact then
+      inset = EdgeInsets.symmetric(horizontal: 6.0, vertical: 10.0)
+    end
     local scroll = ScrollView(child: list.padding(insets: inset))
     return scroll.background(Look.sidebar)
   end
@@ -67,16 +77,23 @@ export class PlaceList extends View
       end
       refresh()
     end
+    local compact = browser.compact
     local name = HStack(alignment: StackAlignment.Center, spacing: 8.0) do
       FileIcon("disk", Look.glyph).frame(width: 16.0, height: 16.0)
-      Text(drive.label).font(13.0).foregroundStyle(Look.text).lineLimit(1)
-      Spacer()
+      if not compact then
+        Text(drive.label).font(13.0).foregroundStyle(Look.text).lineLimit(1)
+        Spacer()
+      end
     end
     local mark = Text("⏏").font(12.0).foregroundStyle(Look.dimText)
     local inset = EdgeInsets.symmetric(horizontal: 6.0, vertical: 4.0)
+    -- With no room for the mark that ejects, the drive is ejected from
+    -- the wider window.
     local row = HStack(alignment: StackAlignment.Center, spacing: 4.0) do
       GestureArea(child: name, onTap: go).expanded()
-      GestureArea(child: mark.padding(insets: EdgeInsets.symmetric(horizontal: 4.0)), onTap: eject)
+      if not compact then
+        GestureArea(child: mark.padding(insets: EdgeInsets.symmetric(horizontal: 4.0)), onTap: eject)
+      end
     end
     return row.padding(insets: inset).background(fill, 6.0)
   end
@@ -88,9 +105,12 @@ export class PlaceList extends View
     if browser.folder == place.path then
       fill = Look.place
     end
+    local compact = browser.compact
     local row = HStack(alignment: StackAlignment.Center, spacing: 8.0) do
       FileIcon(place.kind, Look.glyph).frame(width: 16.0, height: 16.0)
-      Text(place.title).font(13.0).foregroundStyle(Look.text)
+      if not compact then
+        Text(place.title).font(13.0).foregroundStyle(Look.text)
+      end
       Spacer()
     end
     local inset = EdgeInsets.symmetric(horizontal: 6.0, vertical: 4.0)

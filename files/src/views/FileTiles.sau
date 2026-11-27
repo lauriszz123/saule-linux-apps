@@ -94,13 +94,34 @@ export class FileTiles extends View
 
   fn body(context: BuildContext) -> View
     local browser = self.browser
-    local tiles: table<View> = {}
-    for entry in browser.entries do
-      Table.insert(tiles, FileTile(browser, entry, self.refresh))
+    local refresh = self.refresh
+    -- Only the tiles that show are built: a folder can hold thousands.
+    local entries = browser.entries
+    local tile = fn(i: integer) -> View
+      return FileTile(browser, entries[i], refresh)
     end
-    local flow = FlowStack(children: tiles, spacing: 6.0, runSpacing: 6.0)
-    return ScrollView(
-      child: flow.padding(12.0),
+    -- Everything a tile shows, said as one text: see `FileList`.
+    local said = fn(i: integer) -> string
+      local entry = entries[i]
+      local state = ""
+      if browser.chosen == entry.path then
+        state = "|chosen"
+      end
+      if browser.renaming == entry.path then
+        state = state .. "|" .. browser.typed .. "|" .. tostring(browser.fresh)
+      end
+      return entry.path .. "|" .. tostring(entry.folder) .. state
+    end
+    return LazyGrid(
+      #entries,
+      Look.tileWidth,
+      Look.tileIcon + 52.0,
+      tile,
+      stamp: said,
+      reveal: browser.chosenAt(),
+      spacing: 6.0,
+      runSpacing: 6.0,
+      padding: EdgeInsets.all(12.0),
       key: "icons:" .. browser.folder
     )
   end

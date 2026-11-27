@@ -24,6 +24,19 @@ export class Look
   static glyph: Color = Color(0.45, 0.66, 1.0)
 
   static sidebarWidth: float = 168.0
+  -- In a window narrower than `narrowBelow` the sidebar is its icons
+  -- alone, this wide: tiled three or four to a screen, the places'
+  -- names took the room the files' names needed.
+  static sidebarIcons: float = 44.0
+  static narrowBelow: float = 430.0
+
+  -- How wide the sidebar is, icons alone or with its names.
+  static fn sidebar(compact: boolean) -> float
+    if compact then
+      return Look.sidebarIcons
+    end
+    return Look.sidebarWidth
+  end
   static barHeight: float = 40.0
   static footHeight: float = 24.0
   static rowHeight: float = 24.0

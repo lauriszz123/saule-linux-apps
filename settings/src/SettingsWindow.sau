@@ -67,6 +67,13 @@ export class SettingsWindow extends View
 
   fn tick(el: Element, dt: float) -> nil
     local bag: table = el.data.scratch
+    -- The window can be tiled into a third of the screen at any moment:
+    -- narrow, the sidebar gives its names' room to the pane.
+    local narrow = el.size.width > 0.0 and el.size.width < Style.narrowBelow
+    if narrow != ((bag.narrow as boolean?) ?? false) then
+      bag.narrow = narrow
+      el.markNeedsBuild()
+    end
     local waited = ((bag.waited as float?) ?? 0.0) + dt
     if waited < SettingsWindow.every then
       bag.waited = waited
@@ -131,9 +138,16 @@ export class SettingsWindow extends View
     end
 
     local accent = Presets.find(Presets.accents, settings.options.accent)
+    local narrow = (context.data().scratch.narrow as boolean?) ?? false
+    local sidebarWidth = Style.sidebarWidth
+    local padding = Style.padding
+    if narrow then
+      sidebarWidth = Style.sidebarIcons
+      padding = Style.padding / 2.0
+    end
     local layout = HStack(alignment: StackAlignment.Fill) do
-      Sidebar(open, machine, openPane).frame(width: Style.sidebarWidth)
-      pane.padding(Style.padding).expanded()
+      Sidebar(open, machine, openPane, narrow).frame(width: sidebarWidth)
+      pane.padding(padding).expanded()
     end
     return Theme(
       data: Style.theme(Style.colour(accent.colours[1])),

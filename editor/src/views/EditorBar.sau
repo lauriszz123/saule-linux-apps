@@ -19,6 +19,9 @@ export class EditorBar extends View
   onSmaller: Action
   onLarger: Action
   onWrap: Action
+  -- In a narrow window: the buttons of the text's size and wrapping
+  -- are left out (both are in the settings), so the rest fit.
+  compact: boolean
 
   fn init(
     document: Document,
@@ -29,6 +32,7 @@ export class EditorBar extends View
     onSmaller: Action,
     onLarger: Action,
     onWrap: Action,
+    compact: boolean = false,
     key: string? = nil
   )
     self.super(key)
@@ -40,6 +44,7 @@ export class EditorBar extends View
     self.onSmaller = onSmaller
     self.onLarger = onLarger
     self.onWrap = onWrap
+    self.compact = compact
   end
 
   fn body(context: BuildContext) -> View
@@ -70,17 +75,21 @@ export class EditorBar extends View
       ToolButton("Wrap", self.onWrap, on: self.wrap)
     end
 
-    -- The name sits in the middle of the bar whatever is at its sides.
-    local sides = HStack(alignment: centre) do
+    -- The name sits in the middle of the room between the buttons, and
+    -- keeps to it: in a narrow window it is cut short, where it used to
+    -- lie over the buttons at its sides.
+    local middle = Clip(child: named.centered())
+    local compact = self.compact
+    local bar = HStack(alignment: centre, spacing: 8.0) do
       show(left)
-      Spacer()
-      show(right)
+      middle.expanded()
+      if not compact then
+        show(right)
+      end
     end
     local inset = EdgeInsets.symmetric(horizontal: 10.0)
-    local bar = ZStack(alignment: Alignment.center()) do
-      sides.padding(insets: inset)
-      show(named)
-    end
-    return bar.frame(height: Look.barHeight).background(Look.bar)
+    return bar.padding(insets: inset).frame(height: Look.barHeight).background(
+      Look.bar
+    )
   end
 end

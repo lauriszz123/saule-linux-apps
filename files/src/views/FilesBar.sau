@@ -79,9 +79,11 @@ export class FilesBar extends View
     )
 
     -- In a narrow window the search goes first, then the choice of
-    -- view: both have keys, and the way back and the name do not.
+    -- view, then the button: all three have keys or a menu, and the way
+    -- back and the name do not.
     local wide = browser.width <= 0.0 or browser.width >= 540.0
     local middling = browser.width <= 0.0 or browser.width >= 380.0
+    local roomy = browser.width <= 0.0 or browser.width >= 250.0
     local row = HStack(alignment: StackAlignment.Center, spacing: 6.0) do
       show(back)
       show(forward)
@@ -93,7 +95,9 @@ export class FilesBar extends View
         show(icons)
         Spacer().frame(width: 6.0)
       end
-      show(action)
+      if roomy then
+        show(action)
+      end
       if wide then
         search.frame(width: 150.0, height: 26.0)
       end

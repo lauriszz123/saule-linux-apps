@@ -10,6 +10,10 @@ export class Entry
   size: integer
   -- When it was last changed, in Unix seconds.
   modified: integer
+  -- The name without regard to capitals, as a person reads it: what a
+  -- folder is put in order by, worked out once and not at every
+  -- comparison of a sort.
+  folded: string
 
   fn init(
     name: string,
@@ -23,6 +27,7 @@ export class Entry
     self.folder = folder
     self.size = size
     self.modified = modified
+    self.folded = String.lower(name)
   end
 
   -- Whether its name starts with a dot: not shown unless asked for.

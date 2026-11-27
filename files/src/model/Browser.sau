@@ -7,7 +7,7 @@
 -- What could not be done is left in `notice`, for the window to say
 -- once.
 
-from "fileskit" import Entry, FileOps, Folder, Places, SortBy
+from "fileskit" import Entry, FileOps, Folder, Places, Room, SortBy
 from Apps import Apps
 
 export class Browser
@@ -45,6 +45,8 @@ export class Browser
   -- How wide the folder is shown, in points; 0 before it is known. The
   -- views leave out what there is no room for.
   width: float
+  -- The window is narrow: the sidebar is its icons alone.
+  compact: boolean
 
   -- What was copied or cut: its path, and whether pasting moves it.
   carried: string
@@ -64,6 +66,16 @@ export class Browser
   -- time, the folder changed behind the window's back.
   local listed: string
 
+  -- When the folder itself was last changed (something put in it, taken
+  -- out or renamed), as of the last reading, and how many times it has
+  -- been looked at since without being read (see `look`).
+  local stamp: integer
+  local looks: integer
+
+  -- A folder of more than this many things is not read again at every
+  -- look, only when it says it changed, and now and then besides.
+  static few: integer = 400
+
   fn init(folder: string)
     self.folder = folder
     self.entries = {}
@@ -80,23 +92,55 @@ export class Browser
     self.typed = ""
     self.fresh = false
     self.width = 0.0
+    self.compact = false
     self.carried = ""
     self.cutting = false
     self.asking = ""
     self.notice = ""
     self.available = -1
     self.listed = ""
+    self.stamp = 0
+    self.looks = 0
     self.reload()
+    self.measure()
+  end
+
+  -- When the folder itself was last changed, as the system has it.
+  local fn changedAt() -> integer
+    local info = Os.fsInfo(self.folder)
+    if info == nil then
+      return 0
+    end
+    return info!.modifiedAt ?? 0
+  end
+
+  -- The look taken every few seconds, so that what another program
+  -- does to the folder shows. True when what is shown changed.
+  --
+  -- A small folder is read again, which also finds a file that grew.
+  -- Reading a large one takes long enough to be felt, every few
+  -- seconds, so it is read when the folder says something was put in,
+  -- taken out or renamed, and otherwise only every so many looks: the
+  -- more there is in it, the fewer.
+  fn look() -> boolean
+    self.looks = self.looks + 1
+    local every = #self.entries / Browser.few + 1
+    if self.changedAt() == self.stamp and self.looks < every then
+      return false
+    end
+    return self.reload()
   end
 
   -- Read the folder again. True when what is shown changed.
   fn reload() -> boolean
-    local all = Folder.list(self.folder, self.hidden)
+    self.stamp = self.changedAt()
+    self.looks = 0
+    local all = Folder.list(self.folder, self.hidden, false)
     self.readable = all != nil
     local wanted = String.lower(String.trim(self.query))
     local shown: table<Entry> = {}
     for entry in all ?? {} do
-      if wanted == "" or String.contains(String.lower(entry.name), wanted) then
+      if wanted == "" or String.contains(entry.folded, wanted) then
         Table.insert(shown, entry)
       end
     end
@@ -117,9 +161,19 @@ export class Browser
   end
 
   -- How much room the disk has: asked when the folder changes, not with
-  -- every look at it.
+  -- every look at it, and not waited for (`Room`).
   fn measure() -> nil
-    self.available = Folder.available(self.folder)
+    Room.ask(self.folder)
+  end
+
+  -- Take the answer when it has come. True when it is a new one.
+  fn measured() -> boolean
+    local room = Room.take()
+    if room == nil or room! == self.available then
+      return false
+    end
+    self.available = room!
+    return true
   end
 
   fn entry(path: string) -> Entry?
@@ -132,6 +186,19 @@ export class Browser
       end
     end
     return nil
+  end
+
+  -- Where the one chosen is in `entries`, from 1; 0 with none chosen.
+  fn chosenAt() -> integer
+    if self.chosen == "" then
+      return 0
+    end
+    for i = 1, #self.entries do
+      if self.entries[i].path == self.chosen then
+        return i
+      end
+    end
+    return 0
   end
 
   fn inTrash() -> boolean
